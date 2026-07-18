@@ -1,0 +1,21 @@
+# Dockerfile de PRODUCCION del frontend (nginx sirviendo estaticos + proxy interno a /api/).
+# El Dockerfile de desarrollo (./Dockerfile, usado por docker-compose.yml local) sigue sirviendo
+# con "serve" en el puerto 3000 y no se toca: este archivo es exclusivo del stack de produccion
+# (docker-compose.prod.yml), que corre en el servidor prod-app.
+
+FROM node:18-alpine AS build
+WORKDIR /app
+# Mismo origen que el backend gracias al proxy de nginx (ver nginx.conf): la app llama a
+# rutas relativas /api/..., no a una URL absoluta con host/puerto.
+ARG VITE_API_URL=/api
+ENV VITE_API_URL=$VITE_API_URL
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build
+
+FROM nginx:alpine
+COPY --from=build /app/dist /usr/share/nginx/html
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]

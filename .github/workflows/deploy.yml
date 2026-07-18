@@ -1,0 +1,175 @@
+name: Test, Build & Deploy kpi-system
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME_BACKEND: ${{ github.repository_owner }}/kpi-system-backend
+  IMAGE_NAME_FRONTEND: ${{ github.repository_owner }}/kpi-system-frontend
+
+jobs:
+  # ============ TESTS (corre en cada push y PR, gatea el deploy) ============
+  test-backend:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: backend
+        run: npm ci
+
+      - name: Type-check
+        working-directory: backend
+        run: npx tsc --noEmit
+
+      - name: Pruebas unitarias
+        working-directory: backend
+        run: npx jest --runInBand
+
+      - name: Pruebas de integracion (Postgres real, MSSQL mockeado)
+        working-directory: backend
+        env:
+          POSTGRES_HOST: localhost
+          POSTGRES_PORT: 5432
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+        run: npx jest --config jest.integration.config.js --runInBand
+
+  test-frontend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias
+        working-directory: frontend
+        run: npm ci
+
+      - name: Type-check
+        working-directory: frontend
+        run: npx tsc --noEmit
+
+  # ============ BUILD + PUSH + DEPLOY (solo en push a main, tras pasar los tests) ============
+  build-and-deploy:
+    needs: [test-backend, test-frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login a GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build y push del backend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./backend
+          file: ./backend/Dockerfile
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_BACKEND }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build y push del frontend
+        uses: docker/build-push-action@v5
+        with:
+          context: ./frontend
+          file: ./frontend/Dockerfile.prod
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:latest
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME_FRONTEND }}:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # Mantiene docker-compose.prod.yml en prod-app sincronizado con lo que hay en git,
+      # para que un cambio al compose file no quede desfasado del que corre en el servidor.
+      - name: Copiar docker-compose.prod.yml a prod-app
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          source: 'docker-compose.prod.yml'
+          target: '~/apps/kpi-system'
+          strip_components: 0
+
+      - name: Deploy a prod-app
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.PROD_HOST }}
+          username: ${{ secrets.PROD_USER }}
+          key: ${{ secrets.PROD_SSH_KEY }}
+          envs: GITHUB_SHA
+          script: |
+            set -e
+            cd ~/apps/kpi-system
+
+            export GITHUB_REPOSITORY_OWNER="${{ github.repository_owner }}"
+            export IMAGE_TAG="$GITHUB_SHA"
+
+            echo "Descargando imagenes $IMAGE_TAG..."
+            docker compose -f docker-compose.prod.yml pull
+
+            echo "Reiniciando servicios..."
+            docker compose -f docker-compose.prod.yml up -d --force-recreate
+
+            echo "Corriendo migraciones contra prod-db..."
+            docker compose -f docker-compose.prod.yml exec -T backend npm run migrate:docker
+
+            echo "Esperando arranque del backend..."
+            sleep 10
+
+            # El puerto 5000 del backend no se publica al host (solo "expose", no "ports"):
+            # se valida a traves del proxy de nginx en el frontend, que es ademas el mismo
+            # camino que recorre una peticion real del navegador.
+            echo "Health check..."
+            curl -f "http://localhost:${FRONTEND_PORT:-8290}/api/health" || {
+              echo "Health check fallo, revisando logs:"
+              docker compose -f docker-compose.prod.yml logs --tail=100 backend frontend
+              exit 1
+            }
+
+            echo "Deploy exitoso: $IMAGE_TAG"

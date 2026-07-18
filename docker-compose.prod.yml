@@ -1,0 +1,50 @@
+# Stack de PRODUCCION (solo prod-app): backend + frontend, usando las imagenes ya construidas
+# y publicadas a GHCR por el workflow de GitHub Actions. NO levanta Postgres: prod-db es un
+# servidor aparte, apuntado via las variables POSTGRES_* del archivo .env de este mismo directorio
+# (ver .env.production.example). Tampoco incluye Redis: la aplicacion no lo usa en ningun lado.
+#
+# Uso en prod-app:
+#   docker compose -f docker-compose.prod.yml pull
+#   docker compose -f docker-compose.prod.yml up -d --force-recreate
+#   docker compose -f docker-compose.prod.yml exec backend npm run migrate:docker
+
+name: kpi-system
+
+services:
+  backend:
+    image: ${REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY_OWNER:-heriberto777}/kpi-system-backend:${IMAGE_TAG:-latest}
+    container_name: kpi-system-backend
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      NODE_ENV: production
+    expose:
+      - '5000'
+    networks:
+      - kpi_internal
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost:5000/api/health']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+  frontend:
+    image: ${REGISTRY:-ghcr.io}/${GITHUB_REPOSITORY_OWNER:-heriberto777}/kpi-system-frontend:${IMAGE_TAG:-latest}
+    container_name: kpi-system-frontend
+    restart: unless-stopped
+    ports:
+      - '${FRONTEND_PORT:-8290}:80'
+    networks:
+      - kpi_internal
+    depends_on:
+      - backend
+    healthcheck:
+      test: ['CMD', 'wget', '--quiet', '--tries=1', '--spider', 'http://localhost/']
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+networks:
+  kpi_internal:
+    driver: bridge
