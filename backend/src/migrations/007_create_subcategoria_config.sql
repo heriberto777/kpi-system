@@ -1,5 +1,5 @@
 -- ============================================
--- 013: dim_subcategoria_config
+-- 007: dim_subcategoria_config
 -- Fuente unica de verdad de que subcategorias estan "activas" (se muestran en los reportes
 -- de Distribucion). Antes esto era una lista hardcodeada en el INSERT de upsertDimObjetivos
 -- (postgresql.service.ts), que solo se aplicaba al crear una fila nueva de

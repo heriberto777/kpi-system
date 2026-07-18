@@ -15,7 +15,7 @@ CREATE TABLE IF NOT EXISTS dim_dia_no_laborable (
 -- --------------------------------------------
 -- FECHA_REFERENCIA_VENTAS
 -- "Hoy" para efectos de ventanas de analisis es la fecha mas reciente que exista realmente en
--- fact_ventas, no CURRENT_DATE. Se define aqui (no en 007_create_materialized_views.sql) porque
+-- fact_ventas, no CURRENT_DATE. Se define aqui (no en 008_create_materialized_views.sql) porque
 -- dias_laborables_transcurridos() la necesita y esta migracion corre antes.
 -- --------------------------------------------
 CREATE OR REPLACE FUNCTION fecha_referencia_ventas() RETURNS DATE AS $$
