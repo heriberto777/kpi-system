@@ -32,4 +32,7 @@ async function runMigrations(): Promise<void> {
 
 runMigrations()
   .then(() => process.exit(0))
-  .catch(() => process.exit(1));
+  .catch((error) => {
+    logger.error('Migraciones abortadas', { error: error instanceof Error ? error.message : error });
+    process.exit(1);
+  });
