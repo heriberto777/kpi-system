@@ -15,6 +15,7 @@ const NAV_ITEMS: NavItem[] = [
   { to: '/kpis', label: 'KPIs', icon: 'chart' },
   { to: '/logs', label: 'Logs', icon: 'clock' },
   { to: '/parametros', label: 'Parámetros', icon: 'settings' },
+  { to: '/surtido-mandatorio', label: 'Surtido Mandatorio', icon: 'users' },
   { to: '/settings', label: 'Configuracion', icon: 'settings' },
 ];
 

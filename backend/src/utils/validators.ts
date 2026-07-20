@@ -110,3 +110,33 @@ export const ventasPorVendedorQueryValidators = [
   query('supervisor').optional().isString().trim().notEmpty(),
   query('mes').optional().matches(MES_REGEX).withMessage('mes debe tener formato YYYY-MM'),
 ];
+
+// ============================================
+// SURTIDO MANDATORIO
+// ============================================
+export const surtidoMandatorioResumenQueryValidators = [
+  query('vendedor').optional().isString().trim().notEmpty(),
+  query('mes').optional().matches(MES_REGEX).withMessage('mes debe tener formato YYYY-MM'),
+];
+
+export const surtidoMandatorioFiltroQueryValidators = [
+  query('vendedor').optional().isString().trim().notEmpty(),
+  query('cluster').optional().isIn(['BRONZE', 'SILVER', 'GOLD']),
+  query('mes').optional().matches(MES_REGEX).withMessage('mes debe tener formato YYYY-MM'),
+];
+
+export const setPosicionSurtidoMandatorioValidators = [
+  body('posicion_surtido').isInt({ min: 1 }).toInt(),
+  body('u_cluster').isIn(['BRONZE', 'SILVER', 'GOLD']),
+  body('es_obligatorio').isBoolean().toBoolean(),
+];
+
+export const deletePosicionSurtidoMandatorioValidators = [param('id').isInt({ min: 1 }).toInt()];
+
+export const updateObjetivoSurtidoMandatorioValidators = [
+  param('uCluster').isIn(['BRONZE', 'SILVER', 'GOLD']),
+  body('base_objetivo').isInt({ min: 1 }).toInt(),
+  body('colocaciones_meta').isInt({ min: 1 }).toInt(),
+];
+
+export const updateConfigSurtidoMandatorioValidators = [body('cliente_activo_minimo').isInt({ min: 1 }).toInt()];

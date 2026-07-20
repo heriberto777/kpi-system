@@ -221,3 +221,64 @@ export interface ResumenDiasLaborablesData {
   dias_laborables_mes: number;
   dias_laborables_transcurridos: number;
 }
+
+// ---- Surtido Mandatorio (modulo separado del Surtido existente) ----
+
+export interface SurtidoMandatorioClienteData {
+  id: number;
+  anno_mes: string;
+  id_cliente: number;
+  codigo_cliente: string;
+  u_cluster: Cluster;
+  vendedor: string | null;
+  posiciones_activas: number;
+  posiciones_obligatorias: number;
+  cliente_activo: boolean;
+}
+
+export interface SurtidoMandatorioCoberturaData {
+  id: number;
+  anno_mes: string;
+  vendedor: string;
+  nombre_vendedor: string | null;
+  u_cluster: Cluster;
+  universo: number;
+  cubiertos: number;
+  promedio_activaciones: number | null;
+  suma_activaciones: number;
+  clientes_activos: number;
+}
+
+export interface SurtidoMandatorioResumenVendedorData {
+  id: number;
+  anno_mes: string;
+  vendedor: string;
+  nombre_vendedor: string | null;
+  universo_total: number;
+  cubiertos_total: number;
+  objetivo_promedio: number | null;
+  total_activaciones: number | null;
+  logro_porcentaje: number | null;
+  logro_a_la_fecha_porcentaje: number | null;
+  dias_laborables_mes: number;
+  dias_transcurridos: number;
+  proyeccion_diaria: number | null;
+  proyeccion_98: number | null;
+}
+
+export interface PosicionSurtidoMandatorioData {
+  id: number;
+  posicion_surtido: number;
+  u_cluster: string;
+  es_obligatorio: boolean;
+}
+
+export interface ObjetivoSurtidoMandatorioData {
+  u_cluster: string;
+  base_objetivo: number;
+  colocaciones_meta: number;
+}
+
+export interface ConfigSurtidoMandatorioData {
+  cliente_activo_minimo: number;
+}

@@ -11,6 +11,7 @@ import KPIs from './pages/KPIs';
 import Logs from './pages/Logs';
 import Settings from './pages/Settings';
 import Parametros from './pages/Parametros';
+import SurtidoMandatorio from './pages/SurtidoMandatorio';
 
 function PrivateRoute({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
@@ -58,6 +59,14 @@ function AppRoutes() {
         element={
           <PrivateRoute>
             <Parametros />
+          </PrivateRoute>
+        }
+      />
+      <Route
+        path="/surtido-mandatorio"
+        element={
+          <PrivateRoute>
+            <SurtidoMandatorio />
           </PrivateRoute>
         }
       />

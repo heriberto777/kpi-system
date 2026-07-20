@@ -184,7 +184,7 @@ async function limpiarBaseDeDatos(): Promise<void> {
   await pgPool.query(
     `TRUNCATE TABLE fact_ventas, dim_clientes, dim_articulos, dim_tiempo,
        dim_universo_cliente, dim_objetivos_distribucion, dim_vendedor, dim_clasificacion,
-       dim_cuota_vendedor, dim_dia_no_laborable
+       dim_cuota_vendedor, dim_dia_no_laborable, dim_surtido_mandatorio_posicion
        RESTART IDENTITY CASCADE`
   );
   await pgPool.query(
@@ -225,6 +225,15 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     // fecha, asi que "transcurridos" tambien baja de 13 a 12.
     await pgPool.query(
       `INSERT INTO dim_dia_no_laborable (fecha, descripcion) VALUES ('2025-01-08', 'Feriado de prueba')`
+    );
+
+    // Surtido Mandatorio: solo G21 (posicion 1) y G22 (posicion 2) son obligatorias para BRONZE;
+    // G32 (posicion 3) queda fuera a proposito, para probar que comprarla no cuenta como "activa".
+    // dim_objetivo_surtido_mandatorio y dim_config_surtido_mandatorio ya vienen sembradas por la
+    // migracion 014 (12/19/23, 11/17/21, minimo=3), no hace falta insertarlas aqui.
+    await pgPool.query(
+      `INSERT INTO dim_surtido_mandatorio_posicion (posicion_surtido, u_cluster, es_obligatorio)
+       VALUES (1, 'BRONZE', TRUE), (2, 'BRONZE', TRUE)`
     );
 
     await PostgresqlService.refreshMaterializedViews();
@@ -615,6 +624,114 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     expect(result.rows).toEqual([
       { u_cluster: 'BRONZE', total_clientes: 3, subcategorias_compradas: 2, subcategorias_obligatorias: 16, surtido_promedio_porcentaje: 12.5, anno_mes: ANNO_MES },
     ]);
+  });
+
+  it('calcula mv_surtido_mandatorio_cliente: solo cuenta posiciones marcadas obligatorias (G21/G22), no G32 aunque se haya comprado', async () => {
+    const result = await pgPool.query(
+      `SELECT codigo_cliente, u_cluster, vendedor, posiciones_activas, posiciones_obligatorias, cliente_activo
+       FROM mv_surtido_mandatorio_cliente
+       WHERE codigo_cliente IN ('C1', 'C2', 'C3') AND anno_mes = '${ANNO_MES}'
+       ORDER BY codigo_cliente`
+    );
+    expect(result.rows).toEqual([
+      // C1: cantidad neta 7 en G21 + 3 en G22, ambas obligatorias -> 2 posiciones activas.
+      // Total de TODAS sus unidades = 10 >= 3 (minimo de cliente_activo) -> activo.
+      { codigo_cliente: 'C1', u_cluster: 'BRONZE', vendedor: VENDEDOR, posiciones_activas: 2, posiciones_obligatorias: 12, cliente_activo: true },
+      // C2: cantidad neta 1 en G21 (obligatoria), 0 en G22 -> 1 posicion activa. Total = 1 < 3 -> no activo.
+      { codigo_cliente: 'C2', u_cluster: 'BRONZE', vendedor: VENDEDOR, posiciones_activas: 1, posiciones_obligatorias: 12, cliente_activo: false },
+      // C3: solo compro G32 (cantidad neta 0 tras la devolucion, y ademas no es obligatoria) -> 0 posiciones activas. Total = 0 -> no activo.
+      { codigo_cliente: 'C3', u_cluster: 'BRONZE', vendedor: VENDEDOR, posiciones_activas: 0, posiciones_obligatorias: 12, cliente_activo: false },
+    ]);
+  });
+
+  it('calcula mv_surtido_mandatorio_cobertura_vendedor: universo/cubiertos/promedio sobre TODO el universo (no solo los cubiertos)', async () => {
+    const result = await pgPool.query(
+      `SELECT universo, cubiertos, promedio_activaciones, suma_activaciones, clientes_activos
+       FROM mv_surtido_mandatorio_cobertura_vendedor
+       WHERE vendedor = '${VENDEDOR}' AND u_cluster = 'BRONZE' AND anno_mes = '${ANNO_MES}'`
+    );
+    // universo = 3 (C1+C2+C3); cubiertos = 2 (C1 y C2 tienen >=1 posicion activa, C3 no);
+    // promedio_activaciones = (2+1+0)/3 = 1.0 (SOBRE LOS 3, no solo los 2 cubiertos);
+    // suma_activaciones = 2+1+0 = 3; clientes_activos = 1 (solo C1 llega al minimo de unidades).
+    expect(result.rows).toEqual([
+      { universo: 3, cubiertos: 2, promedio_activaciones: 1, suma_activaciones: 3, clientes_activos: 1 },
+    ]);
+  });
+
+  it('calcula mv_surtido_mandatorio_resumen_vendedor: logro, cobertura y proyecciones (diaria y al 98%) en dias habiles', async () => {
+    const result = await pgPool.query(
+      `SELECT universo_total, cubiertos_total, objetivo_promedio, total_activaciones, logro_porcentaje,
+              logro_a_la_fecha_porcentaje, dias_laborables_mes, dias_transcurridos, proyeccion_diaria, proyeccion_98
+       FROM mv_surtido_mandatorio_resumen_vendedor
+       WHERE vendedor = '${VENDEDOR}' AND anno_mes = '${ANNO_MES}'`
+    );
+    // objetivo_promedio = (universo_BRONZE(3) * base_objetivo_BRONZE(12)) / 3 = 12 (unico cluster con clientes de V1)
+    // total_activaciones = suma_activaciones(3) / clientes_activos(1) = 3
+    // logro_porcentaje = 3 / 12 * 100 = 25
+    // logro_a_la_fecha = cubiertos(2) / universo(3) * 100 = 66.67
+    // dias_laborables_mes=22, dias_transcurridos=12 (ver test de dias habiles mas abajo)
+    // proyeccion_diaria = ((12*22) - 3) * 2 / (22-12) = (264-3)*2/10 = 52.2
+    // proyeccion_98 = (universo(3)*colocaciones_meta_BRONZE(11)*0.98*22 - promedio(1)*cubiertos(2)) / 10
+    //               = (32.34*22 - 2) / 10 = (711.48-2)/10 = 70.95 (redondeado)
+    expect(result.rows).toEqual([
+      {
+        universo_total: 3,
+        cubiertos_total: 2,
+        objetivo_promedio: 12,
+        total_activaciones: 3,
+        logro_porcentaje: 25,
+        logro_a_la_fecha_porcentaje: 66.67,
+        dias_laborables_mes: 22,
+        dias_transcurridos: 12,
+        proyeccion_diaria: 52.2,
+        proyeccion_98: 70.95,
+      },
+    ]);
+  });
+
+  it('mv_surtido_mandatorio_resumen_vendedor no revienta por division entre cero cuando el vendedor no tiene clientes activos ese mes', async () => {
+    // Vendedor/cliente temporales, aislados en este test (no fixtures globales): un vendedor con
+    // un solo cliente y CERO ventas ese mes, para probar que "sin clientes activos" no revienta
+    // por division entre cero (edge case explicito de la especificacion de Surtido Mandatorio).
+    await pgPool.query(
+      `INSERT INTO dim_vendedor (codigo_vendedor, nombre_vendedor, retail_asignado, estado)
+       VALUES ('V9', 'Vendedor Nueve', 'COLMADO', 'Activo')`
+    );
+    await pgPool.query(
+      `INSERT INTO dim_clientes (codigo_cliente, nombre_cliente, categoria_cliente, retail, u_cluster, vendedor_asignado, estado, fecha_creacion)
+       VALUES ('C9', 'Cliente Nueve', 'A1', 'COLMADO', 'BRONZE', 'V9', 'Activo', '2025-01-01')`
+    );
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_mandatorio_cliente');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_mandatorio_cobertura_vendedor');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_mandatorio_resumen_vendedor');
+
+    const result = await pgPool.query(
+      `SELECT universo_total, cubiertos_total, total_activaciones, logro_porcentaje, proyeccion_diaria, logro_a_la_fecha_porcentaje
+       FROM mv_surtido_mandatorio_resumen_vendedor
+       WHERE vendedor = 'V9' AND anno_mes = '${ANNO_MES}'`
+    );
+    // V9 tiene 1 cliente (C9) sin ninguna venta ese mes: clientes_activos = 0, asi que
+    // total_activaciones/logro_porcentaje/proyeccion_diaria (todos dividen entre clientes_activos)
+    // deben quedar en NULL en vez de reventar o dar Infinity. logro_a_la_fecha NO depende de
+    // clientes_activos (divide entre universo), asi que si calcula un valor real (0%).
+    expect(result.rows).toEqual([
+      {
+        universo_total: 1,
+        cubiertos_total: 0,
+        total_activaciones: null,
+        logro_porcentaje: null,
+        proyeccion_diaria: null,
+        logro_a_la_fecha_porcentaje: 0,
+      },
+    ]);
+
+    // Limpieza + restaurar el estado que esperan el resto de las pruebas (dim_clientes/dim_vendedor
+    // con snapshots exactos de C1/C2/C3 y V1).
+    await pgPool.query(`DELETE FROM dim_clientes WHERE codigo_cliente = 'C9'`);
+    await pgPool.query(`DELETE FROM dim_vendedor WHERE codigo_vendedor = 'V9'`);
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_mandatorio_cliente');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_mandatorio_cobertura_vendedor');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_mandatorio_resumen_vendedor');
   });
 
   it('dias_laborables_mes/dias_laborables_transcurridos excluyen fines de semana y los feriados curados en dim_dia_no_laborable', async () => {

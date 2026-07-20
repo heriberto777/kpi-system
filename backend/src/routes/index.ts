@@ -3,6 +3,7 @@ import authRoutes from './auth.routes';
 import etlRoutes from './etl.routes';
 import kpiRoutes from './kpi.routes';
 import configRoutes from './config.routes';
+import surtidoMandatorioRoutes from './surtidoMandatorio.routes';
 import { checkMssqlConnection, checkPostgresConnection } from '../config/database';
 import { asyncHandler } from '../utils/asyncHandler';
 
@@ -26,5 +27,6 @@ router.use('/auth', authRoutes);
 router.use('/etl', etlRoutes);
 router.use('/kpi', kpiRoutes);
 router.use('/config', configRoutes);
+router.use('/surtido-mandatorio', surtidoMandatorioRoutes);
 
 export default router;

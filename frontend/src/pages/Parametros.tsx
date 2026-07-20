@@ -5,8 +5,9 @@ import ParametrosSubcategorias from '../components/organismos/ParametrosSubcateg
 import ParametrosSurtido from '../components/organismos/ParametrosSurtido';
 import ParametrosObjetivos from '../components/organismos/ParametrosObjetivos';
 import ParametrosDiasHabiles from '../components/organismos/ParametrosDiasHabiles';
+import ParametrosSurtidoMandatorio from '../components/organismos/ParametrosSurtidoMandatorio';
 
-type Vista = 'umbrales' | 'subcategorias' | 'surtido' | 'objetivos' | 'dias-habiles';
+type Vista = 'umbrales' | 'subcategorias' | 'surtido' | 'objetivos' | 'dias-habiles' | 'surtido-mandatorio';
 
 const TABS: Array<{ value: Vista; label: string }> = [
   { value: 'umbrales', label: 'Umbrales' },
@@ -14,6 +15,7 @@ const TABS: Array<{ value: Vista; label: string }> = [
   { value: 'surtido', label: 'Surtido Obligatorio' },
   { value: 'objetivos', label: 'Objetivos y Universo' },
   { value: 'dias-habiles', label: 'Días Hábiles' },
+  { value: 'surtido-mandatorio', label: 'Surtido Mandatorio' },
 ];
 
 export default function Parametros() {
@@ -46,6 +48,7 @@ export default function Parametros() {
       {vista === 'surtido' && <ParametrosSurtido />}
       {vista === 'objetivos' && <ParametrosObjetivos />}
       {vista === 'dias-habiles' && <ParametrosDiasHabiles />}
+      {vista === 'surtido-mandatorio' && <ParametrosSurtidoMandatorio />}
     </DashboardTemplate>
   );
 }

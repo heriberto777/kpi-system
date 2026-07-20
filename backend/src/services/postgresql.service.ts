@@ -617,6 +617,10 @@ export const PostgresqlService = {
       'mv_surtido_por_vendedor',
       'mv_surtido_por_cluster',
       'mv_clientes_no_visitados',
+      // Orden importa: cada una lee de la anterior (cliente -> cobertura_vendedor -> resumen_vendedor).
+      'mv_surtido_mandatorio_cliente',
+      'mv_surtido_mandatorio_cobertura_vendedor',
+      'mv_surtido_mandatorio_resumen_vendedor',
       'mv_resumen_kpi_general',
     ];
     for (const view of views) {
