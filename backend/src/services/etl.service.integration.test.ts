@@ -160,6 +160,10 @@ const CUOTA: StgCuota[] = [
   // aqui simulado como 'RUTA1') en vez del codigo real del vendedor. mv_ventas_por_vendedor debe
   // atribuirla al vendedor real (VENDEDOR) via dim_vendedor.al_vendedor, no perderla.
   { anno_mes: ANNO_MES, vendedor: 'RUTA1', retail: 'MAYORISTA', clasificacion_2: 'G21', cuota_monto: 400 },
+  // Regresion: un codigo (p.ej. '999' en el ERP real) sin ningun vendedor/ruta que lo resuelva
+  // en dim_vendedor (huerfano de verdad) no debe perderse: debe aparecer como fila propia "Sin
+  // vendedor asignado / Casa" en vez de desaparecer silenciosamente del total.
+  { anno_mes: ANNO_MES, vendedor: 'CASA', retail: 'OTROS', clasificacion_2: 'G21', cuota_monto: 250 },
 ];
 
 // Regresion del bug real: un vendedor con cartera repartida en retail (rutas especiales
@@ -498,6 +502,25 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
        WHERE vendedor = '${VENDEDOR}' AND anno_mes = '${ANNO_MES}' AND retail = 'MAYORISTA'`
     );
     expect(result.rows).toEqual([{ retail: 'MAYORISTA', cuota_monto: 400, venta_neta: 0 }]);
+  });
+
+  it('muestra como "Sin vendedor asignado / Casa" una cuota cuyo codigo no resuelve a ningun vendedor ni ruta conocida, en vez de perderla', async () => {
+    const result = await pgPool.query(
+      `SELECT vendedor, nombre_vendedor, retail, cuota_monto, venta_neta, alcance_porcentaje, falta
+       FROM mv_ventas_por_vendedor
+       WHERE anno_mes = '${ANNO_MES}' AND retail = 'OTROS'`
+    );
+    expect(result.rows).toEqual([
+      {
+        vendedor: 'CASA',
+        nombre_vendedor: 'Sin vendedor asignado / Casa',
+        retail: 'OTROS',
+        cuota_monto: 250,
+        venta_neta: 0,
+        alcance_porcentaje: 0,
+        falta: 250,
+      },
+    ]);
   });
 
   it('calcula mv_surtido_por_vendedor usando el conteo real de clientes del vendedor por cluster (no dim_vendedor.cantidad_cliente)', async () => {

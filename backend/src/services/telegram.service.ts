@@ -2,7 +2,9 @@ import https from 'https';
 import { env } from '../config/env';
 import logger from '../config/logger';
 import { PostgresqlService } from './postgresql.service';
-import { ResumenKpiRow } from '../types';
+import { DistribucionRetailRow, ResumenKpiRow, VentasVendedorRow } from '../types';
+
+const LIMITE_FOCO = 5;
 
 function enviarMensaje(texto: string): Promise<void> {
   return new Promise((resolve, reject) => {
@@ -82,9 +84,46 @@ export const TelegramService = {
       '',
       `Clientes activos: ${resumen.clientes_activos_mes} / Total: ${resumen.total_clientes}`,
       `Dias transcurridos: ${resumen.dias_transcurridos_mes} / ${resumen.dias_totales_mes}`,
-    ].join('\n');
+    ];
 
-    await enviarMensaje(texto);
+    if (resumen.anno_mes) {
+      const vendedoresFoco = await PostgresqlService.query<
+        Pick<VentasVendedorRow, 'vendedor' | 'nombre_vendedor' | 'retail' | 'alcance_porcentaje' | 'falta'>
+      >(
+        `SELECT vendedor, nombre_vendedor, retail, alcance_porcentaje, falta
+         FROM mv_ventas_por_vendedor
+         WHERE anno_mes = $1 AND cuota_monto > 0 AND alcance_porcentaje IS NOT NULL
+         ORDER BY alcance_porcentaje ASC
+         LIMIT ${LIMITE_FOCO}`,
+        [resumen.anno_mes]
+      );
+      if (vendedoresFoco.rows.length > 0) {
+        texto.push('', '*Vendedores con foco en ventas* (menor % logrado):');
+        vendedoresFoco.rows.forEach((v, i) => {
+          const nombre = v.nombre_vendedor ?? v.vendedor;
+          texto.push(`${i + 1}. ${nombre} - ${v.retail}: ${porcentaje(v.alcance_porcentaje)} (falta ${moneda(v.falta)})`);
+        });
+      }
+
+      const subcategoriasFoco = await PostgresqlService.query<
+        Pick<DistribucionRetailRow, 'retail' | 'subcategoria' | 'logro_porcentaje' | 'restan'>
+      >(
+        `SELECT retail, subcategoria, logro_porcentaje, restan
+         FROM mv_distribucion_por_retail
+         WHERE anno_mes = $1 AND objetivo_clientes > 0 AND logro_porcentaje IS NOT NULL
+         ORDER BY logro_porcentaje ASC
+         LIMIT ${LIMITE_FOCO}`,
+        [resumen.anno_mes]
+      );
+      if (subcategoriasFoco.rows.length > 0) {
+        texto.push('', '*Subcategorias con foco en distribucion* (menor % de logro):');
+        subcategoriasFoco.rows.forEach((s, i) => {
+          texto.push(`${i + 1}. ${s.subcategoria} - ${s.retail}: ${porcentaje(s.logro_porcentaje)} (faltan ${s.restan} clientes)`);
+        });
+      }
+    }
+
+    await enviarMensaje(texto.join('\n'));
     logger.info('Resumen diario enviado por Telegram');
   },
 };

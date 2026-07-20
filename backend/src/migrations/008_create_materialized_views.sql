@@ -283,38 +283,7 @@ ventas_total AS (
              fecha_referencia_ventas()
            )
     GROUP BY mc.anno_mes, fv.vendedor, fv.retail
-)
-SELECT
-    ROW_NUMBER() OVER () AS id,
-    ct.anno_mes,
-    dv.codigo_vendedor AS vendedor,
-    dv.nombre_vendedor,
-    dv.vendedor_supervisor AS supervisor,
-    ct.retail,
-    ct.cuota_monto,
-    COALESCE(vt.venta_neta, 0) AS venta_neta,
-    COALESCE(vt.venta_bruta, 0) AS venta_bruta,
-    COALESCE(vt.facturas, 0) AS facturas,
-    ROUND(COALESCE(vt.venta_neta, 0) / NULLIF(vt.facturas, 0), 2) AS dropsize,
-    ROUND(((COALESCE(vt.venta_bruta, 0) - COALESCE(vt.venta_neta, 0)) / NULLIF(vt.venta_bruta, 0)) * 100, 2) AS pct_devolucion,
-    ROUND((COALESCE(vt.venta_neta, 0) / NULLIF(ct.cuota_monto, 0)) * 100, 2) AS alcance_porcentaje,
-    (ct.cuota_monto - COALESCE(vt.venta_neta, 0)) AS falta,
-    dias_laborables_mes(ct.anno_mes) AS dias_laborables_mes,
-    dias_laborables_transcurridos(ct.anno_mes) AS dias_transcurridos,
-    ROUND(
-        COALESCE(vt.venta_neta, 0) / NULLIF(dias_laborables_transcurridos(ct.anno_mes), 0) * dias_laborables_mes(ct.anno_mes), 2
-    ) AS proyeccion,
-    ROUND(
-        (COALESCE(vt.venta_neta, 0) / NULLIF(dias_laborables_transcurridos(ct.anno_mes), 0) * dias_laborables_mes(ct.anno_mes))
-        / NULLIF(ct.cuota_monto, 0) * 100, 2
-    ) AS alcance_proyeccion_porcentaje,
-    CASE
-        WHEN (ct.cuota_monto - COALESCE(vt.venta_neta, 0)) > 0
-        THEN ROUND(
-            (ct.cuota_monto - COALESCE(vt.venta_neta, 0))
-            / NULLIF(dias_laborables_mes(ct.anno_mes) - dias_laborables_transcurridos(ct.anno_mes), 0), 2
-        )
-    END AS diario
+),
 -- dbo.cuota.vendedor puede traer el codigo real del vendedor O un pseudo-codigo de ruta
 -- (MC1/MD1/WC1/WD1, ver comentario de QUERY_CUOTA en mssql.service.ts) que NUNCA aparece como
 -- dim_vendedor.codigo_vendedor (esos codigos no existen como registros propios en
@@ -323,16 +292,88 @@ SELECT
 -- Cruzar por (codigo_vendedor OR al_vendedor) cubre ambos espacios de identidad sin arriesgar
 -- perder una cuota si algun vendedor real llegara a tener fila propia Y fila de ruta para el
 -- mismo retail (bug real anterior: cruzar solo por codigo_vendedor perdia ~21.5M en cuotas).
-FROM cuota_total ct
-JOIN dim_vendedor dv
-    ON dv.retail_asignado = ct.retail
-   AND (dv.codigo_vendedor = ct.vendedor OR dv.al_vendedor = ct.vendedor)
--- Las ventas en fact_ventas siempre usan el codigo REAL del vendedor (dim_clientes.vendedor_asignado
--- viene de C.VENDEDOR, nunca del pseudo-codigo de ruta), por eso aqui se cruza por
--- dv.codigo_vendedor (ya resuelto arriba), no por ct.vendedor.
-LEFT JOIN ventas_total vt ON vt.anno_mes = ct.anno_mes AND vt.vendedor = dv.codigo_vendedor AND vt.retail = ct.retail
-WHERE dv.estado = 'Activo'
-ORDER BY ct.anno_mes DESC, dv.codigo_vendedor;
+asignados AS (
+    SELECT
+        ct.anno_mes,
+        dv.codigo_vendedor AS vendedor,
+        dv.nombre_vendedor,
+        dv.vendedor_supervisor AS supervisor,
+        ct.retail,
+        ct.cuota_monto,
+        COALESCE(vt.venta_neta, 0) AS venta_neta,
+        COALESCE(vt.venta_bruta, 0) AS venta_bruta,
+        COALESCE(vt.facturas, 0) AS facturas
+    FROM cuota_total ct
+    JOIN dim_vendedor dv
+        ON dv.retail_asignado = ct.retail
+       AND (dv.codigo_vendedor = ct.vendedor OR dv.al_vendedor = ct.vendedor)
+    -- Las ventas en fact_ventas siempre usan el codigo REAL del vendedor
+    -- (dim_clientes.vendedor_asignado viene de C.VENDEDOR, nunca del pseudo-codigo de ruta), por
+    -- eso aqui se cruza por dv.codigo_vendedor (ya resuelto arriba), no por ct.vendedor.
+    LEFT JOIN ventas_total vt ON vt.anno_mes = ct.anno_mes AND vt.vendedor = dv.codigo_vendedor AND vt.retail = ct.retail
+    WHERE dv.estado = 'Activo'
+),
+-- Cuota registrada bajo un codigo (p.ej. '999') que no corresponde a ningun vendedor real ni a
+-- una ruta especial con clientes ruteados en el ERP: en vez de perderse silenciosamente del
+-- total (bug real anterior), se muestra como una fila generica "Sin vendedor asignado / Casa".
+-- No hay venta real que atribuirle (fact_ventas.vendedor nunca usa este codigo huerfano).
+huerfanos AS (
+    SELECT
+        ct.anno_mes,
+        ct.vendedor,
+        'Sin vendedor asignado / Casa'::VARCHAR AS nombre_vendedor,
+        NULL::VARCHAR AS supervisor,
+        ct.retail,
+        ct.cuota_monto,
+        0::NUMERIC AS venta_neta,
+        0::NUMERIC AS venta_bruta,
+        0::BIGINT AS facturas
+    FROM cuota_total ct
+    WHERE NOT EXISTS (
+        SELECT 1 FROM dim_vendedor dv
+        WHERE dv.retail_asignado = ct.retail
+          AND (dv.codigo_vendedor = ct.vendedor OR dv.al_vendedor = ct.vendedor)
+          AND dv.estado = 'Activo'
+    )
+),
+combinado AS (
+    SELECT * FROM asignados
+    UNION ALL
+    SELECT * FROM huerfanos
+)
+SELECT
+    ROW_NUMBER() OVER () AS id,
+    anno_mes,
+    vendedor,
+    nombre_vendedor,
+    supervisor,
+    retail,
+    cuota_monto,
+    venta_neta,
+    venta_bruta,
+    facturas,
+    ROUND(venta_neta / NULLIF(facturas, 0), 2) AS dropsize,
+    ROUND(((venta_bruta - venta_neta) / NULLIF(venta_bruta, 0)) * 100, 2) AS pct_devolucion,
+    ROUND((venta_neta / NULLIF(cuota_monto, 0)) * 100, 2) AS alcance_porcentaje,
+    (cuota_monto - venta_neta) AS falta,
+    dias_laborables_mes(anno_mes) AS dias_laborables_mes,
+    dias_laborables_transcurridos(anno_mes) AS dias_transcurridos,
+    ROUND(
+        venta_neta / NULLIF(dias_laborables_transcurridos(anno_mes), 0) * dias_laborables_mes(anno_mes), 2
+    ) AS proyeccion,
+    ROUND(
+        (venta_neta / NULLIF(dias_laborables_transcurridos(anno_mes), 0) * dias_laborables_mes(anno_mes))
+        / NULLIF(cuota_monto, 0) * 100, 2
+    ) AS alcance_proyeccion_porcentaje,
+    CASE
+        WHEN (cuota_monto - venta_neta) > 0
+        THEN ROUND(
+            (cuota_monto - venta_neta)
+            / NULLIF(dias_laborables_mes(anno_mes) - dias_laborables_transcurridos(anno_mes), 0), 2
+        )
+    END AS diario
+FROM combinado
+ORDER BY anno_mes DESC, vendedor;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_ventas_vendedor_id ON mv_ventas_por_vendedor (id);
 CREATE INDEX IF NOT EXISTS idx_mv_ventas_vendedor_lookup ON mv_ventas_por_vendedor (vendedor, retail, anno_mes);
