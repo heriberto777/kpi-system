@@ -557,6 +557,37 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     await pgPool.query('REFRESH MATERIALIZED VIEW mv_ventas_por_vendedor');
   });
 
+  it('un vendedor real con una venta fuera de su territorio habitual sigue mostrando su nombre real, no "Sin vendedor asignado / Casa" (bug real: vendedores 8/9/O004/etc. se etiquetaban como huerfanos por tener alguna venta en un retail sin fila propia en dim_vendedor)', async () => {
+    // VENDEDOR (V1) tiene filas en dim_vendedor para COLMADO y MAYORISTA (via RUTA1), pero
+    // NINGUNA para AUTOSERVICIO -- simula una venta suya "fuera de territorio" en ese retail.
+    await pgPool.query(
+      `INSERT INTO fact_ventas (id_factura, id_cliente, id_articulo, id_fecha, cantidad, monto, codigo_cliente, codigo_articulo, retail, u_cluster, vendedor, clasificacion_2, u_surtido_n)
+       SELECT 'FTERR1', dc.id_cliente, da.id_articulo, $1, 1, 300, dc.codigo_cliente, da.codigo_articulo, 'AUTOSERVICIO', dc.u_cluster, $2, da.clasificacion_2, da.u_surtido_n
+       FROM dim_clientes dc, dim_articulos da
+       WHERE dc.codigo_cliente = 'C1' AND da.codigo_articulo = 'ART-G21'`,
+      [FECHA_FACTURA, VENDEDOR]
+    );
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_ventas_por_vendedor');
+
+    const result = await pgPool.query(
+      `SELECT vendedor, nombre_vendedor, retail, cuota_monto, venta_neta
+       FROM mv_ventas_por_vendedor
+       WHERE vendedor = '${VENDEDOR}' AND retail = 'AUTOSERVICIO'`
+    );
+    expect(result.rows).toEqual([
+      {
+        vendedor: VENDEDOR,
+        nombre_vendedor: 'Vendedor Uno',
+        retail: 'AUTOSERVICIO',
+        cuota_monto: 0,
+        venta_neta: 300,
+      },
+    ]);
+
+    await pgPool.query(`DELETE FROM fact_ventas WHERE id_factura = 'FTERR1'`);
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_ventas_por_vendedor');
+  });
+
   it('calcula mv_surtido_por_vendedor usando el conteo real de clientes del vendedor por cluster (no dim_vendedor.cantidad_cliente)', async () => {
     const result = await pgPool.query(
       `SELECT vendedor, u_cluster, total_clientes_vendedor, subcategorias_compradas, subcategorias_obligatorias, surtido_porcentaje, anno_mes

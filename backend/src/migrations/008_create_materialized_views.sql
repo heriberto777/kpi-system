@@ -293,56 +293,69 @@ ventas_total AS (
 -- perder una cuota si algun vendedor real llegara a tener fila propia Y fila de ruta para el
 -- mismo retail (bug real anterior: cruzar solo por codigo_vendedor perdia ~21.5M en cuotas).
 --
--- IMPORTANTE: la cuota y las ventas se resuelven cada una POR SEPARADO contra dim_vendedor
--- (no se arranca desde cuota_total con un JOIN a ventas, como en un intento anterior), porque
--- pueden existir ventas reales bajo un codigo de "vendedor" (p.ej. '999', un cliente cuyo
--- C.VENDEDOR en el ERP quedo asi por no tener vendedor asignado) en un retail donde ESE codigo
--- nunca tuvo cuota asignada -- si solo se resuelve la cuota, esas ventas quedan invisibles en
+-- IMPORTANTE: "quien es este vendedor" y "en que retail fue esta venta/cuota" son dos preguntas
+-- INDEPENDIENTES. Un vendedor real puede tener ventas fuera de su retail habitual (un cliente
+-- excepcional categorizado distinto), y esas ventas NO dejan de ser suyas solo porque el retail
+-- no coincide con su dim_vendedor.retail_asignado "de origen" (bug real: vendedores conocidos
+-- como '8', '9', 'O004' aparecian como "Sin vendedor asignado / Casa" en retail OTROS solo por
+-- tener ahi alguna venta fuera de su territorio). Por eso la identidad se resuelve por codigo
+-- SOLAMENTE (sin exigir coincidencia de retail); el retail de cada fila sale directo de
+-- cuota_total/ventas_total, no de dim_vendedor.
+vendedores_conocidos AS (
+    SELECT codigo, MAX(codigo_vendedor) AS codigo_vendedor, MAX(nombre_vendedor) AS nombre_vendedor, MAX(supervisor) AS supervisor
+    FROM (
+        SELECT codigo_vendedor AS codigo, codigo_vendedor, nombre_vendedor, vendedor_supervisor AS supervisor
+        FROM dim_vendedor WHERE estado = 'Activo'
+        UNION ALL
+        -- al_vendedor resuelve pseudo-codigos de ruta (MC1/MD1/WC1/WD1) al vendedor real que
+        -- los atiende (confirmado 1:1 sin ambiguedad: MC1/MD1->Mary Rodriguez, WC1/WD1->Wilson).
+        SELECT al_vendedor AS codigo, codigo_vendedor, nombre_vendedor, vendedor_supervisor AS supervisor
+        FROM dim_vendedor WHERE estado = 'Activo' AND al_vendedor IS NOT NULL
+    ) t
+    GROUP BY codigo
+),
+-- La cuota y las ventas se resuelven cada una POR SEPARADO (no se arranca desde cuota_total con
+-- un JOIN a ventas), porque pueden existir ventas reales bajo un codigo de "vendedor" (p.ej.
+-- '999', un cliente cuyo C.VENDEDOR en el ERP quedo asi por no tener vendedor asignado) que
+-- nunca tuvo cuota en absoluto -- si solo se resuelve la cuota, esas ventas quedan invisibles en
 -- toda la vista, aunque sean dinero real (bug real: cliente 18478, categoria A2/COLMADO,
 -- facturado bajo vendedor '999', que solo tiene cuota registrada en retail OTROS).
 cuota_resuelta AS (
     SELECT
         ct.anno_mes,
         ct.retail,
-        COALESCE(dv.codigo_vendedor, ct.vendedor) AS vendedor,
-        MAX(dv.nombre_vendedor) AS nombre_vendedor,
-        MAX(dv.vendedor_supervisor) AS supervisor,
+        COALESCE(vk.codigo_vendedor, ct.vendedor) AS vendedor,
+        vk.nombre_vendedor,
+        vk.supervisor,
         SUM(ct.cuota_monto) AS cuota_monto
     FROM cuota_total ct
-    LEFT JOIN dim_vendedor dv
-        ON dv.retail_asignado = ct.retail
-       AND (dv.codigo_vendedor = ct.vendedor OR dv.al_vendedor = ct.vendedor)
-       AND dv.estado = 'Activo'
-    GROUP BY ct.anno_mes, ct.retail, COALESCE(dv.codigo_vendedor, ct.vendedor)
+    LEFT JOIN vendedores_conocidos vk ON vk.codigo = ct.vendedor
+    GROUP BY ct.anno_mes, ct.retail, COALESCE(vk.codigo_vendedor, ct.vendedor), vk.nombre_vendedor, vk.supervisor
 ),
--- Las ventas en fact_ventas siempre usan el codigo REAL del vendedor (dim_clientes.vendedor_asignado
--- viene de C.VENDEDOR, nunca del pseudo-codigo de ruta), pero ese codigo real puede coincidir con
--- dim_vendedor.al_vendedor de una fila de ruta (p.ej. si Wilson Jimenez vendiera directo, sin pasar
--- por WC1/WD1) -- se resuelve igual que la cuota para mantener consistencia.
 ventas_resuelta AS (
     SELECT
         vt.anno_mes,
         vt.retail,
-        COALESCE(dv.codigo_vendedor, vt.vendedor) AS vendedor,
+        COALESCE(vk.codigo_vendedor, vt.vendedor) AS vendedor,
+        vk.nombre_vendedor,
+        vk.supervisor,
         SUM(vt.venta_neta) AS venta_neta,
         SUM(vt.venta_bruta) AS venta_bruta,
         SUM(vt.facturas) AS facturas
     FROM ventas_total vt
-    LEFT JOIN dim_vendedor dv
-        ON dv.retail_asignado = vt.retail
-       AND (dv.codigo_vendedor = vt.vendedor OR dv.al_vendedor = vt.vendedor)
-       AND dv.estado = 'Activo'
-    GROUP BY vt.anno_mes, vt.retail, COALESCE(dv.codigo_vendedor, vt.vendedor)
+    LEFT JOIN vendedores_conocidos vk ON vk.codigo = vt.vendedor
+    GROUP BY vt.anno_mes, vt.retail, COALESCE(vk.codigo_vendedor, vt.vendedor), vk.nombre_vendedor, vk.supervisor
 ),
 -- FULL OUTER: una fila puede tener cuota sin ventas (vendedor que aun no vende nada este mes),
--- ventas sin cuota (el caso real de arriba) o ambas. Si ninguna de las dos ramas resolvio un
--- vendedor real (dim_vendedor), nombre_vendedor queda NULL aqui y se etiqueta mas abajo.
+-- ventas sin cuota (el caso real de arriba) o ambas. nombre_vendedor/supervisor se toman de
+-- cualquiera de los dos lados que haya resuelto la identidad (ambos la resuelven igual, por
+-- codigo, asi que solo uno de los dos puede venir NULL si ese lado no tiene fila).
 combinado AS (
     SELECT
         COALESCE(cr.anno_mes, vr.anno_mes) AS anno_mes,
         COALESCE(cr.vendedor, vr.vendedor) AS vendedor,
-        cr.nombre_vendedor,
-        cr.supervisor,
+        COALESCE(cr.nombre_vendedor, vr.nombre_vendedor) AS nombre_vendedor,
+        COALESCE(cr.supervisor, vr.supervisor) AS supervisor,
         COALESCE(cr.retail, vr.retail) AS retail,
         COALESCE(cr.cuota_monto, 0) AS cuota_monto,
         COALESCE(vr.venta_neta, 0) AS venta_neta,
