@@ -156,6 +156,10 @@ const CUOTA: StgCuota[] = [
   { anno_mes: ANNO_MES, vendedor: VENDEDOR, retail: 'COLMADO', clasificacion_2: 'G21', cuota_monto: 1000 },
   { anno_mes: ANNO_MES, vendedor: VENDEDOR, retail: 'COLMADO', clasificacion_2: 'G22', cuota_monto: 300 },
   { anno_mes: ANNO_MES, vendedor: VENDEDOR, retail: 'COLMADO', clasificacion_2: 'G32', cuota_monto: 500 },
+  // Regresion del bug real: dbo.cuota puede traer un pseudo-codigo de ruta (MC1/MD1/WC1/WD1,
+  // aqui simulado como 'RUTA1') en vez del codigo real del vendedor. mv_ventas_por_vendedor debe
+  // atribuirla al vendedor real (VENDEDOR) via dim_vendedor.al_vendedor, no perderla.
+  { anno_mes: ANNO_MES, vendedor: 'RUTA1', retail: 'MAYORISTA', clasificacion_2: 'G21', cuota_monto: 400 },
 ];
 
 // Regresion del bug real: un vendedor con cartera repartida en retail (rutas especiales
@@ -460,7 +464,7 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
       `SELECT retail, cuota_monto, venta_neta, venta_bruta, facturas, dropsize, pct_devolucion, alcance_porcentaje,
               falta, dias_laborables_mes, dias_transcurridos, proyeccion, alcance_proyeccion_porcentaje, diario
        FROM mv_ventas_por_vendedor
-       WHERE vendedor = '${VENDEDOR}' AND anno_mes = '${ANNO_MES}'`
+       WHERE vendedor = '${VENDEDOR}' AND anno_mes = '${ANNO_MES}' AND retail = 'COLMADO'`
     );
     // cuota_monto = SUM de TODAS las subcategorias del fixture CUOTA (1000+300+500=1800), no solo
     // las que tienen resultado en Distribucion. venta_neta/venta_bruta suman TODOS los clientes
@@ -485,6 +489,15 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
         diario: 85, // 850 / (22 - 12)
       },
     ]);
+  });
+
+  it('atribuye al vendedor real la cuota registrada bajo un pseudo-codigo de ruta (MC1/MD1/WC1/WD1)', async () => {
+    const result = await pgPool.query(
+      `SELECT retail, cuota_monto, venta_neta
+       FROM mv_ventas_por_vendedor
+       WHERE vendedor = '${VENDEDOR}' AND anno_mes = '${ANNO_MES}' AND retail = 'MAYORISTA'`
+    );
+    expect(result.rows).toEqual([{ retail: 'MAYORISTA', cuota_monto: 400, venta_neta: 0 }]);
   });
 
   it('calcula mv_surtido_por_vendedor usando el conteo real de clientes del vendedor por cluster (no dim_vendedor.cantidad_cliente)', async () => {

@@ -315,9 +315,22 @@ SELECT
             / NULLIF(dias_laborables_mes(ct.anno_mes) - dias_laborables_transcurridos(ct.anno_mes), 0), 2
         )
     END AS diario
+-- dbo.cuota.vendedor puede traer el codigo real del vendedor O un pseudo-codigo de ruta
+-- (MC1/MD1/WC1/WD1, ver comentario de QUERY_CUOTA en mssql.service.ts) que NUNCA aparece como
+-- dim_vendedor.codigo_vendedor (esos codigos no existen como registros propios en
+-- CATELLI.VENDEDOR). dim_vendedor.al_vendedor ya resuelve esa ruta al vendedor real que la
+-- atiende (confirmado 1:1 sin ambiguedad: MC1/MD1->Mary Rodriguez, WC1/WD1->Wilson Jimenez).
+-- Cruzar por (codigo_vendedor OR al_vendedor) cubre ambos espacios de identidad sin arriesgar
+-- perder una cuota si algun vendedor real llegara a tener fila propia Y fila de ruta para el
+-- mismo retail (bug real anterior: cruzar solo por codigo_vendedor perdia ~21.5M en cuotas).
 FROM cuota_total ct
-JOIN dim_vendedor dv ON dv.codigo_vendedor = ct.vendedor AND dv.retail_asignado = ct.retail
-LEFT JOIN ventas_total vt ON vt.anno_mes = ct.anno_mes AND vt.vendedor = ct.vendedor AND vt.retail = ct.retail
+JOIN dim_vendedor dv
+    ON dv.retail_asignado = ct.retail
+   AND (dv.codigo_vendedor = ct.vendedor OR dv.al_vendedor = ct.vendedor)
+-- Las ventas en fact_ventas siempre usan el codigo REAL del vendedor (dim_clientes.vendedor_asignado
+-- viene de C.VENDEDOR, nunca del pseudo-codigo de ruta), por eso aqui se cruza por
+-- dv.codigo_vendedor (ya resuelto arriba), no por ct.vendedor.
+LEFT JOIN ventas_total vt ON vt.anno_mes = ct.anno_mes AND vt.vendedor = dv.codigo_vendedor AND vt.retail = ct.retail
 WHERE dv.estado = 'Activo'
 ORDER BY ct.anno_mes DESC, dv.codigo_vendedor;
 
