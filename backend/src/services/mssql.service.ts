@@ -52,20 +52,23 @@ const QUERY_ARTICULOS = `
 // Sin filtro de U_SURTIDO_N: traemos TODOS los articulos activos porque DISTRIBUCION se mide
 // por CLASIFICACION_2 (subcategoria), no solo por los grupos de surtido obligatorio.
 
+// CATEGORIA_CLIENTE = 'OT' (clientes "otros", sin retail real asignado) se excluye: no deben
+// contarse en ninguna venta, igual criterio ya usado en dim_clientes/QUERY_VENDEDOR.
 const QUERY_FACTURAS = `
   SELECT
       CONVERT(VARCHAR(100), F.FACTURA) AS id_factura,
       F.CLIENTE AS codigo_cliente,
       CONVERT(DATE, F.FECHA) AS fecha_factura,
       CASE
-          WHEN F.ANULADA = 'S' THEN 'Anulada'
           WHEN F.TIPO_DOCUMENTO = 'D' THEN 'Devolucion'
           ELSE 'Activa'
       END AS estado_factura
   FROM CATELLI.FACTURA F
+  INNER JOIN CATELLI.CLIENTE C ON F.CLIENTE = C.CLIENTE
   WHERE CONVERT(DATE, F.FECHA) >= @fechaDesde
     AND CONVERT(DATE, F.FECHA) <= @fechaHasta
     AND F.ANULADA != 'S'
+    AND C.CATEGORIA_CLIENTE NOT LIKE 'OT'
   ORDER BY F.FECHA DESC;
 `;
 
@@ -73,6 +76,11 @@ const QUERY_FACTURAS = `
 // propias lineas en FACTURA_LINEA (cantidad guardada en positivo, igual que una venta normal).
 // Se "netean" invirtiendo el signo de cantidad/monto aqui mismo, para que al sumar por
 // cliente+articulo en Postgres el resultado ya sea la cantidad neta (venta - devolucion).
+//
+// Filtros de articulo agregados tras validar contra el reporte de referencia (Excel VENTAS):
+// A.TIPO = 'V' son articulos de servicio/varios que no son venta real; los codigos puntuales
+// (975, 971, 2022, 2027, 5155, 5215, 5149) y CLASIFICACION_4 = 'GND' son ajustes/gastos que el
+// negocio nunca cuenta como venta.
 const QUERY_FACTURA_LINEAS = `
   SELECT
       CONVERT(VARCHAR(100), FL.FACTURA) AS id_factura,
@@ -82,9 +90,13 @@ const QUERY_FACTURA_LINEAS = `
       CASE WHEN F.TIPO_DOCUMENTO = 'D' THEN -(FL.cantidad * FL.precio_unitario) ELSE (FL.cantidad * FL.precio_unitario) END AS monto_total
   FROM CATELLI.FACTURA_LINEA FL
   JOIN CATELLI.FACTURA F ON FL.FACTURA = F.FACTURA
+  JOIN CATELLI.ARTICULO A ON FL.ARTICULO = A.ARTICULO
   WHERE CONVERT(DATE, F.FECHA) >= @fechaDesde
     AND CONVERT(DATE, F.FECHA) <= @fechaHasta
     AND F.ANULADA != 'S'
+    AND A.TIPO NOT IN ('V')
+    AND A.ARTICULO NOT IN ('975', '971', '2022', '2027', '5155', '5215', '5149')
+    AND A.CLASIFICACION_4 NOT IN ('GND')
   ORDER BY FL.FACTURA, FL.ARTICULO;
 `;
 
