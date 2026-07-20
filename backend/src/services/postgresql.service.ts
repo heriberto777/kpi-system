@@ -377,12 +377,20 @@ export const PostgresqlService = {
     // CATEGORIA_CLIENTE='OT', articulo de ajuste) quedaban "zombis" en fact_ventas para
     // siempre, porque el INSERT...ON CONFLICT de mas abajo solo agrega/actualiza, nunca borra.
     // Acotado a [fechaDesde, fechaHasta] para no tocar historico fuera de la ventana sincronizada.
+    // El JOIN contra stg_facturas es imprescindible aqui: QUERY_FACTURA_LINEAS no filtra por
+    // cliente (solo QUERY_FACTURAS lo hace, excluyendo CATEGORIA_CLIENTE='OT'), asi que una
+    // linea de un cliente OT sigue presente en stg_factura_lineas aunque su factura ya no este
+    // en stg_facturas. Comprobar solo contra stg_factura_lineas (como en un intento anterior)
+    // encontraba esa linea "huerfana" y NO borraba la fila -- el mismo join que usa el INSERT
+    // de mas abajo es el que determina que factura+articulo son realmente validos hoy.
     await query(
       `
       DELETE FROM fact_ventas fv
       WHERE fv.id_fecha >= $1 AND fv.id_fecha <= $2
         AND NOT EXISTS (
-          SELECT 1 FROM stg_factura_lineas stfl
+          SELECT 1
+          FROM stg_factura_lineas stfl
+          JOIN stg_facturas stf ON stfl.id_factura = stf.id_factura
           WHERE stfl.id_factura = fv.id_factura AND stfl.codigo_articulo = fv.codigo_articulo
         );
       `,

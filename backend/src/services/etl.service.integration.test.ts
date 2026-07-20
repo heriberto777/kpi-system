@@ -261,6 +261,37 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     expect(Number(filaG22.cantidad)).toBe(1);
   });
 
+  it('upsertFactVentas borra filas cuya factura ya no aparece en stg_facturas (p.ej. cliente excluido por un cambio de filtro en QUERY_FACTURAS), aunque su linea siga en stg_factura_lineas', async () => {
+    // Reproduce el bug real: QUERY_FACTURA_LINEAS no filtra por cliente, asi que una factura
+    // que QUERY_FACTURAS excluyo (p.ej. CATEGORIA_CLIENTE='OT') puede seguir teniendo su linea
+    // en stg_factura_lineas aunque ya no este en stg_facturas. upsertFactVentas debe tratarla
+    // como invalida y borrarla de fact_ventas, no dejarla "zombi".
+    await pgPool.query(
+      `INSERT INTO stg_facturas (id_factura, codigo_cliente, fecha_factura, estado_factura)
+       VALUES ('F99', 'C1', $1, 'Activa')`,
+      [FECHA_FACTURA]
+    );
+    await pgPool.query(
+      `INSERT INTO stg_factura_lineas (id_factura, codigo_articulo, cantidad, precio_unitario, monto_total)
+       VALUES ('F99', 'ART-G21', 1, 100, 100)`
+    );
+    await PostgresqlService.upsertFactVentas(`${ANNO_MES}-01`, `${ANNO_MES}-31`);
+
+    let result = await pgPool.query(`SELECT 1 FROM fact_ventas WHERE id_factura = 'F99'`);
+    expect(result.rows).toHaveLength(1);
+
+    // Simula el siguiente sync: la factura ya no llega a stg_facturas (cliente ahora excluido),
+    // pero su linea si sigue llegando a stg_factura_lineas (esa query no filtra por cliente).
+    await pgPool.query(`DELETE FROM stg_facturas WHERE id_factura = 'F99'`);
+    await PostgresqlService.upsertFactVentas(`${ANNO_MES}-01`, `${ANNO_MES}-31`);
+
+    result = await pgPool.query(`SELECT 1 FROM fact_ventas WHERE id_factura = 'F99'`);
+    expect(result.rows).toHaveLength(0);
+
+    // Limpieza: no debe interferir con el resto de los tests, que asumen solo F1/F2 en staging.
+    await pgPool.query(`DELETE FROM stg_factura_lineas WHERE id_factura = 'F99'`);
+  });
+
   it('sincroniza objetivos_distribucion y universo_cliente desde el ERP', async () => {
     const objetivos = await pgPool.query(
       `SELECT retail, clasificacion_2, objetivo_clientes FROM dim_objetivos_distribucion ORDER BY clasificacion_2`
