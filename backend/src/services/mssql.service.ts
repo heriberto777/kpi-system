@@ -255,6 +255,8 @@ function calcularVentanaMeses(): { annoMesDesde: string; annoMesHasta: string } 
 }
 
 export const MssqlService = {
+  obtenerVentanaSincronizacionVentas: calcularVentanaSincronizacionVentas,
+
   async extraerClientes(): Promise<StgCliente[]> {
     const pool = await getMssqlPool();
     const result = await pool.request().query<StgCliente>(QUERY_CLIENTES);

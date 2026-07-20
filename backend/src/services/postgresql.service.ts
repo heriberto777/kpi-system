@@ -370,7 +370,25 @@ export const PostgresqlService = {
     };
   },
 
-  async upsertFactVentas(): Promise<SyncResult> {
+  async upsertFactVentas(fechaDesde: string, fechaHasta: string): Promise<SyncResult> {
+    // Borra de fact_ventas, dentro de la ventana sincronizada, las filas (factura, articulo)
+    // que ya no aparecen en el staging recien cargado: facturas/lineas que un cambio de filtro
+    // en QUERY_FACTURAS/QUERY_FACTURA_LINEAS (mssql.service.ts) excluyo (p.ej. cliente
+    // CATEGORIA_CLIENTE='OT', articulo de ajuste) quedaban "zombis" en fact_ventas para
+    // siempre, porque el INSERT...ON CONFLICT de mas abajo solo agrega/actualiza, nunca borra.
+    // Acotado a [fechaDesde, fechaHasta] para no tocar historico fuera de la ventana sincronizada.
+    await query(
+      `
+      DELETE FROM fact_ventas fv
+      WHERE fv.id_fecha >= $1 AND fv.id_fecha <= $2
+        AND NOT EXISTS (
+          SELECT 1 FROM stg_factura_lineas stfl
+          WHERE stfl.id_factura = fv.id_factura AND stfl.codigo_articulo = fv.codigo_articulo
+        );
+      `,
+      [fechaDesde, fechaHasta]
+    );
+
     // Asegura que existan las filas de dim_tiempo para las fechas de las facturas
     await query(`
       INSERT INTO dim_tiempo (id_fecha, ano, mes, dia, trimestre, semana, nombre_mes, nombre_dia, es_fin_semana)

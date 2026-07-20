@@ -27,6 +27,7 @@ const { MssqlService } = require('./mssql.service') as {
     extraerVendedor: jest.Mock;
     extraerClasificacion: jest.Mock;
     extraerCuota: jest.Mock;
+    obtenerVentanaSincronizacionVentas: jest.Mock;
   };
 };
 
@@ -199,6 +200,10 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     MssqlService.extraerVendedor.mockResolvedValue(VENDEDORES);
     MssqlService.extraerClasificacion.mockResolvedValue(CLASIFICACIONES);
     MssqlService.extraerCuota.mockResolvedValue(CUOTA);
+    MssqlService.obtenerVentanaSincronizacionVentas.mockReturnValue({
+      desde: `${ANNO_MES}-01`,
+      hasta: `${ANNO_MES}-31`,
+    });
 
     await ETLService.syncClientes(true);
     await ETLService.syncArticulos(true);

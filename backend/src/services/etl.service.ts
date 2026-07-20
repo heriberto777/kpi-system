@@ -128,7 +128,8 @@ export const ETLService = {
         MssqlService.extraerFacturaLineas(),
       ]);
       await PostgresqlService.cargarStagingVentas(facturas, lineas);
-      const resultVentas = await PostgresqlService.upsertFactVentas();
+      const { desde, hasta } = MssqlService.obtenerVentanaSincronizacionVentas();
+      const resultVentas = await PostgresqlService.upsertFactVentas(desde, hasta);
 
       // Los objetivos de distribucion (dbo.distribuccion) viajan junto con ventas,
       // igual que en docs/ESPECIFICACION_FINAL_DISTRIBUCION_KPI.md (Job 4).
