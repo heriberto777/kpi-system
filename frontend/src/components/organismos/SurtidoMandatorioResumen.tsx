@@ -17,16 +17,16 @@ function promedio(valores: number[]): number | null {
 
 export default function SurtidoMandatorioResumen() {
   const [vendedores, setVendedores] = useState<VendedorOption[]>([]);
-  const [mesesDisponibles, setMesesDisponibles] = useState<string[]>([]);
+  const [bimestresDisponibles, setBimestresDisponibles] = useState<string[]>([]);
   const [vendedorSeleccionado, setVendedorSeleccionado] = useState('');
-  const [mesSeleccionado, setMesSeleccionado] = useState('');
+  const [bimestreSeleccionado, setBimestreSeleccionado] = useState('');
   const [resumen, setResumen] = useState<SurtidoMandatorioResumenVendedorData[]>([]);
   const [cobertura, setCobertura] = useState<SurtidoMandatorioCoberturaData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     void kpiApi.getVendedores().then(setVendedores);
-    void kpiApi.getMesesDisponibles().then(setMesesDisponibles);
+    void surtidoMandatorioApi.getBimestresDisponibles().then(setBimestresDisponibles);
   }, []);
 
   useEffect(() => {
@@ -35,11 +35,11 @@ export default function SurtidoMandatorioResumen() {
     Promise.all([
       surtidoMandatorioApi.getResumenPorVendedor({
         vendedor: vendedorSeleccionado || undefined,
-        mes: mesSeleccionado || undefined,
+        bimestre: bimestreSeleccionado || undefined,
       }),
       surtidoMandatorioApi.getCoberturaPorVendedor({
         vendedor: vendedorSeleccionado || undefined,
-        mes: mesSeleccionado || undefined,
+        bimestre: bimestreSeleccionado || undefined,
       }),
     ])
       .then(([resumenData, coberturaData]) => {
@@ -53,14 +53,14 @@ export default function SurtidoMandatorioResumen() {
     return () => {
       cancelado = true;
     };
-  }, [vendedorSeleccionado, mesSeleccionado]);
+  }, [vendedorSeleccionado, bimestreSeleccionado]);
 
   const vendedorOptions = vendedores.map((v) => ({
     value: v.codigo_vendedor,
     label: v.nombre_vendedor ? `${v.nombre_vendedor} (${v.codigo_vendedor})` : v.codigo_vendedor,
   }));
 
-  const mesMostrado = mesSeleccionado || resumen[0]?.anno_mes || null;
+  const bimestreMostrado = bimestreSeleccionado || resumen[0]?.bimestre || null;
 
   // Agregados sobre el conjunto filtrado actual (igual patron que VentasPorVendedor: sumar
   // crudos y derivar el % desde la suma, no promediar porcentajes ya calculados -- excepto
@@ -90,14 +90,14 @@ export default function SurtidoMandatorioResumen() {
           </div>
           <div className="w-40">
             <Select
-              label="Mes"
+              label="Bimestre"
               placeholder="Mas reciente"
-              options={mesesDisponibles.map((m) => ({ value: m, label: m }))}
-              value={mesSeleccionado}
-              onChange={(e) => setMesSeleccionado(e.target.value)}
+              options={bimestresDisponibles.map((b) => ({ value: b, label: b }))}
+              value={bimestreSeleccionado}
+              onChange={(e) => setBimestreSeleccionado(e.target.value)}
             />
           </div>
-          {mesMostrado && <Badge color="info">Mes: {mesMostrado}</Badge>}
+          {bimestreMostrado && <Badge color="info">Bimestre: {bimestreMostrado}</Badge>}
         </div>
       </Card>
 

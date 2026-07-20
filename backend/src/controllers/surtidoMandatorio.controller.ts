@@ -4,21 +4,26 @@ import { asyncHandler } from '../utils/asyncHandler';
 import { Cluster } from '../types';
 
 export const SurtidoMandatorioController = {
+  bimestresDisponibles: asyncHandler(async (_req: Request, res: Response) => {
+    const bimestres = await SurtidoMandatorioService.getBimestresDisponibles();
+    res.json(bimestres);
+  }),
+
   resumenPorVendedor: asyncHandler(async (req: Request, res: Response) => {
-    const { vendedor, mes } = req.query as { vendedor?: string; mes?: string };
-    const rows = await SurtidoMandatorioService.getResumenPorVendedor({ vendedor, mes });
+    const { vendedor, bimestre } = req.query as { vendedor?: string; bimestre?: string };
+    const rows = await SurtidoMandatorioService.getResumenPorVendedor({ vendedor, bimestre });
     res.json(rows);
   }),
 
   coberturaPorVendedor: asyncHandler(async (req: Request, res: Response) => {
-    const { vendedor, cluster, mes } = req.query as { vendedor?: string; cluster?: Cluster; mes?: string };
-    const rows = await SurtidoMandatorioService.getCoberturaPorVendedor({ vendedor, cluster, mes });
+    const { vendedor, cluster, bimestre } = req.query as { vendedor?: string; cluster?: Cluster; bimestre?: string };
+    const rows = await SurtidoMandatorioService.getCoberturaPorVendedor({ vendedor, cluster, bimestre });
     res.json(rows);
   }),
 
   detallePorCliente: asyncHandler(async (req: Request, res: Response) => {
-    const { vendedor, cluster, mes } = req.query as { vendedor?: string; cluster?: Cluster; mes?: string };
-    const rows = await SurtidoMandatorioService.getDetallePorCliente({ vendedor, cluster, mes });
+    const { vendedor, cluster, bimestre } = req.query as { vendedor?: string; cluster?: Cluster; bimestre?: string };
+    const rows = await SurtidoMandatorioService.getDetallePorCliente({ vendedor, cluster, bimestre });
     res.json(rows);
   }),
 

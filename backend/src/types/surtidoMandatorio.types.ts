@@ -1,8 +1,12 @@
 import { Cluster } from './cliente.types';
 
+// Surtido Mandatorio mide todo por BIMESTRE (2 meses consecutivos), no mes calendario como el
+// resto de la app -- confirmado por el negocio. "bimestre" es el primer mes del par (p.ej.
+// '2026-07' representa Jul-Ago 2026).
+
 export interface SurtidoMandatorioClienteRow {
   id: number;
-  anno_mes: string;
+  bimestre: string;
   id_cliente: number;
   codigo_cliente: string;
   u_cluster: Cluster;
@@ -14,7 +18,7 @@ export interface SurtidoMandatorioClienteRow {
 
 export interface SurtidoMandatorioCoberturaRow {
   id: number;
-  anno_mes: string;
+  bimestre: string;
   vendedor: string;
   nombre_vendedor: string | null;
   u_cluster: Cluster;
@@ -27,7 +31,7 @@ export interface SurtidoMandatorioCoberturaRow {
 
 export interface SurtidoMandatorioResumenVendedorRow {
   id: number;
-  anno_mes: string;
+  bimestre: string;
   vendedor: string;
   nombre_vendedor: string | null;
   universo_total: number;
@@ -36,7 +40,7 @@ export interface SurtidoMandatorioResumenVendedorRow {
   total_activaciones: number | null;
   logro_porcentaje: number | null;
   logro_a_la_fecha_porcentaje: number | null;
-  dias_laborables_mes: number;
+  dias_laborables_bimestre: number;
   dias_transcurridos: number;
   proyeccion_diaria: number | null;
   proyeccion_98: number | null;
@@ -44,19 +48,19 @@ export interface SurtidoMandatorioResumenVendedorRow {
 
 export interface SurtidoMandatorioResumenFilter {
   vendedor?: string;
-  mes?: string;
+  bimestre?: string;
 }
 
 export interface SurtidoMandatorioCoberturaFilter {
   vendedor?: string;
   cluster?: Cluster;
-  mes?: string;
+  bimestre?: string;
 }
 
 export interface SurtidoMandatorioClienteFilter {
   vendedor?: string;
   cluster?: Cluster;
-  mes?: string;
+  bimestre?: string;
 }
 
 // ---- Configuracion (Parametros) ----

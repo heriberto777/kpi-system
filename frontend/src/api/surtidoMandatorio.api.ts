@@ -11,16 +11,21 @@ import {
 
 export interface SurtidoMandatorioResumenFilters {
   vendedor?: string;
-  mes?: string;
+  bimestre?: string;
 }
 
 export interface SurtidoMandatorioFiltroFilters {
   vendedor?: string;
   cluster?: Cluster;
-  mes?: string;
+  bimestre?: string;
 }
 
 export const surtidoMandatorioApi = {
+  async getBimestresDisponibles(): Promise<string[]> {
+    const { data } = await apiClient.get<string[]>('/surtido-mandatorio/bimestres-disponibles');
+    return data;
+  },
+
   async getResumenPorVendedor(filters: SurtidoMandatorioResumenFilters = {}): Promise<SurtidoMandatorioResumenVendedorData[]> {
     const { data } = await apiClient.get<SurtidoMandatorioResumenVendedorData[]>('/surtido-mandatorio/resumen-vendedor', {
       params: filters,

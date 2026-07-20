@@ -223,10 +223,12 @@ export interface ResumenDiasLaborablesData {
 }
 
 // ---- Surtido Mandatorio (modulo separado del Surtido existente) ----
+// Mide todo por BIMESTRE (2 meses consecutivos: Ene-Feb, Mar-Abr, ...), no mes calendario --
+// "bimestre" es el primer mes del par (p.ej. '2026-07' representa Jul-Ago 2026).
 
 export interface SurtidoMandatorioClienteData {
   id: number;
-  anno_mes: string;
+  bimestre: string;
   id_cliente: number;
   codigo_cliente: string;
   u_cluster: Cluster;
@@ -238,7 +240,7 @@ export interface SurtidoMandatorioClienteData {
 
 export interface SurtidoMandatorioCoberturaData {
   id: number;
-  anno_mes: string;
+  bimestre: string;
   vendedor: string;
   nombre_vendedor: string | null;
   u_cluster: Cluster;
@@ -251,7 +253,7 @@ export interface SurtidoMandatorioCoberturaData {
 
 export interface SurtidoMandatorioResumenVendedorData {
   id: number;
-  anno_mes: string;
+  bimestre: string;
   vendedor: string;
   nombre_vendedor: string | null;
   universo_total: number;
@@ -260,7 +262,7 @@ export interface SurtidoMandatorioResumenVendedorData {
   total_activaciones: number | null;
   logro_porcentaje: number | null;
   logro_a_la_fecha_porcentaje: number | null;
-  dias_laborables_mes: number;
+  dias_laborables_bimestre: number;
   dias_transcurridos: number;
   proyeccion_diaria: number | null;
   proyeccion_98: number | null;

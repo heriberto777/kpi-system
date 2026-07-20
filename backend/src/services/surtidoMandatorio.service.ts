@@ -13,6 +13,16 @@ import {
 } from '../types';
 
 export const SurtidoMandatorioService = {
+  // Bimestres reales disponibles (derivados de dim_objetivos_distribucion, igual fuente que
+  // kpi.service.ts getMesesDisponibles, reducida al primer mes de cada par via bimestre_inicio()).
+  // Se expone aparte de "meses disponibles" porque aqui el ciclo real es el bimestre, no el mes.
+  async getBimestresDisponibles(): Promise<string[]> {
+    const result = await PostgresqlService.query<{ bimestre: string }>(
+      `SELECT DISTINCT bimestre_inicio(anno_mes) AS bimestre FROM dim_objetivos_distribucion ORDER BY bimestre DESC`
+    );
+    return result.rows.map((r) => r.bimestre);
+  },
+
   // ============================================
   // LECTURA (mv_surtido_mandatorio_*)
   // ============================================
@@ -26,9 +36,9 @@ export const SurtidoMandatorioService = {
       values.push(filter.vendedor);
       idx += 1;
     }
-    // Sin "mes" explicito, usa el mas reciente disponible.
-    conditions.push(`anno_mes = COALESCE($${idx}, (SELECT MAX(anno_mes) FROM mv_surtido_mandatorio_resumen_vendedor))`);
-    values.push(filter.mes ?? null);
+    // Sin "bimestre" explicito, usa el mas reciente disponible.
+    conditions.push(`bimestre = COALESCE($${idx}, (SELECT MAX(bimestre) FROM mv_surtido_mandatorio_resumen_vendedor))`);
+    values.push(filter.bimestre ?? null);
     idx += 1;
 
     const where = `WHERE ${conditions.join(' AND ')}`;
@@ -54,8 +64,8 @@ export const SurtidoMandatorioService = {
       values.push(filter.cluster);
       idx += 1;
     }
-    conditions.push(`anno_mes = COALESCE($${idx}, (SELECT MAX(anno_mes) FROM mv_surtido_mandatorio_cobertura_vendedor))`);
-    values.push(filter.mes ?? null);
+    conditions.push(`bimestre = COALESCE($${idx}, (SELECT MAX(bimestre) FROM mv_surtido_mandatorio_cobertura_vendedor))`);
+    values.push(filter.bimestre ?? null);
     idx += 1;
 
     const where = `WHERE ${conditions.join(' AND ')}`;
@@ -81,8 +91,8 @@ export const SurtidoMandatorioService = {
       values.push(filter.cluster);
       idx += 1;
     }
-    conditions.push(`anno_mes = COALESCE($${idx}, (SELECT MAX(anno_mes) FROM mv_surtido_mandatorio_cliente))`);
-    values.push(filter.mes ?? null);
+    conditions.push(`bimestre = COALESCE($${idx}, (SELECT MAX(bimestre) FROM mv_surtido_mandatorio_cliente))`);
+    values.push(filter.bimestre ?? null);
     idx += 1;
 
     const where = `WHERE ${conditions.join(' AND ')}`;

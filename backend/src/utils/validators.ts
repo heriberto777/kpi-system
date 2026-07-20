@@ -114,15 +114,16 @@ export const ventasPorVendedorQueryValidators = [
 // ============================================
 // SURTIDO MANDATORIO
 // ============================================
+// "bimestre" se valida con el mismo formato YYYY-MM que "mes" (identifica el primer mes del par).
 export const surtidoMandatorioResumenQueryValidators = [
   query('vendedor').optional().isString().trim().notEmpty(),
-  query('mes').optional().matches(MES_REGEX).withMessage('mes debe tener formato YYYY-MM'),
+  query('bimestre').optional().matches(MES_REGEX).withMessage('bimestre debe tener formato YYYY-MM'),
 ];
 
 export const surtidoMandatorioFiltroQueryValidators = [
   query('vendedor').optional().isString().trim().notEmpty(),
   query('cluster').optional().isIn(['BRONZE', 'SILVER', 'GOLD']),
-  query('mes').optional().matches(MES_REGEX).withMessage('mes debe tener formato YYYY-MM'),
+  query('bimestre').optional().matches(MES_REGEX).withMessage('bimestre debe tener formato YYYY-MM'),
 ];
 
 export const setPosicionSurtidoMandatorioValidators = [

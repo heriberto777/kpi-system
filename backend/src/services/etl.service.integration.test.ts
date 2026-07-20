@@ -630,7 +630,7 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     const result = await pgPool.query(
       `SELECT codigo_cliente, u_cluster, vendedor, posiciones_activas, posiciones_obligatorias, cliente_activo
        FROM mv_surtido_mandatorio_cliente
-       WHERE codigo_cliente IN ('C1', 'C2', 'C3') AND anno_mes = '${ANNO_MES}'
+       WHERE codigo_cliente IN ('C1', 'C2', 'C3') AND bimestre = '${ANNO_MES}'
        ORDER BY codigo_cliente`
     );
     expect(result.rows).toEqual([
@@ -648,7 +648,7 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     const result = await pgPool.query(
       `SELECT universo, cubiertos, promedio_activaciones, suma_activaciones, clientes_activos
        FROM mv_surtido_mandatorio_cobertura_vendedor
-       WHERE vendedor = '${VENDEDOR}' AND u_cluster = 'BRONZE' AND anno_mes = '${ANNO_MES}'`
+       WHERE vendedor = '${VENDEDOR}' AND u_cluster = 'BRONZE' AND bimestre = '${ANNO_MES}'`
     );
     // universo = 3 (C1+C2+C3); cubiertos = 2 (C1 y C2 tienen >=1 posicion activa, C3 no);
     // promedio_activaciones = (2+1+0)/3 = 1.0 (SOBRE LOS 3, no solo los 2 cubiertos);
@@ -658,21 +658,26 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     ]);
   });
 
-  it('calcula mv_surtido_mandatorio_resumen_vendedor: logro, cobertura y proyecciones (diaria y al 98%) en dias habiles', async () => {
+  it('calcula mv_surtido_mandatorio_resumen_vendedor: logro, cobertura y proyecciones (diaria y al 98%) en dias habiles de todo el BIMESTRE (2 meses)', async () => {
     const result = await pgPool.query(
       `SELECT universo_total, cubiertos_total, objetivo_promedio, total_activaciones, logro_porcentaje,
-              logro_a_la_fecha_porcentaje, dias_laborables_mes, dias_transcurridos, proyeccion_diaria, proyeccion_98
+              logro_a_la_fecha_porcentaje, dias_laborables_bimestre, dias_transcurridos, proyeccion_diaria, proyeccion_98
        FROM mv_surtido_mandatorio_resumen_vendedor
-       WHERE vendedor = '${VENDEDOR}' AND anno_mes = '${ANNO_MES}'`
+       WHERE vendedor = '${VENDEDOR}' AND bimestre = '${ANNO_MES}'`
     );
     // objetivo_promedio = (universo_BRONZE(3) * base_objetivo_BRONZE(12)) / 3 = 12 (unico cluster con clientes de V1)
     // total_activaciones = suma_activaciones(3) / clientes_activos(1) = 3
     // logro_porcentaje = 3 / 12 * 100 = 25
     // logro_a_la_fecha = cubiertos(2) / universo(3) * 100 = 66.67
-    // dias_laborables_mes=22, dias_transcurridos=12 (ver test de dias habiles mas abajo)
-    // proyeccion_diaria = ((12*22) - 3) * 2 / (22-12) = (264-3)*2/10 = 52.2
-    // proyeccion_98 = (universo(3)*colocaciones_meta_BRONZE(11)*0.98*22 - promedio(1)*cubiertos(2)) / 10
-    //               = (32.34*22 - 2) / 10 = (711.48-2)/10 = 70.95 (redondeado)
+    // ANNO_MES='2025-01' es el primer mes de su bimestre (Ene-Feb 2025), asi que la ventana de
+    // compra cubre ambos meses -- pero fecha_referencia_ventas() = 2025-01-18 (ultima factura del
+    // fixture) sigue acotando el corte ahi, ANTES de llegar a febrero, asi que las cantidades
+    // compradas no cambian. Lo que si cambia es el TAMAÑO del periodo: dias_laborables_bimestre
+    // cuenta Ene+Feb-2025 (42, en vez de los 22 de solo enero), dias_transcurridos se mantiene en
+    // 12 (el feriado del 08-ene cae dentro de cualquiera de las dos ventanas).
+    // proyeccion_diaria = ((12*42) - 3) * 2 / (42-12) = (504-3)*2/30 = 33.4
+    // proyeccion_98 = (universo(3)*colocaciones_meta_BRONZE(11)*0.98*42 - promedio(1)*cubiertos(2)) / 30
+    //               = (32.34*42 - 2) / 30 = (1358.28-2)/30 = 45.21 (redondeado)
     expect(result.rows).toEqual([
       {
         universo_total: 3,
@@ -681,17 +686,17 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
         total_activaciones: 3,
         logro_porcentaje: 25,
         logro_a_la_fecha_porcentaje: 66.67,
-        dias_laborables_mes: 22,
+        dias_laborables_bimestre: 42,
         dias_transcurridos: 12,
-        proyeccion_diaria: 52.2,
-        proyeccion_98: 70.95,
+        proyeccion_diaria: 33.4,
+        proyeccion_98: 45.21,
       },
     ]);
   });
 
-  it('mv_surtido_mandatorio_resumen_vendedor no revienta por division entre cero cuando el vendedor no tiene clientes activos ese mes', async () => {
+  it('mv_surtido_mandatorio_resumen_vendedor no revienta por division entre cero cuando el vendedor no tiene clientes activos ese bimestre', async () => {
     // Vendedor/cliente temporales, aislados en este test (no fixtures globales): un vendedor con
-    // un solo cliente y CERO ventas ese mes, para probar que "sin clientes activos" no revienta
+    // un solo cliente y CERO ventas ese bimestre, para probar que "sin clientes activos" no revienta
     // por division entre cero (edge case explicito de la especificacion de Surtido Mandatorio).
     await pgPool.query(
       `INSERT INTO dim_vendedor (codigo_vendedor, nombre_vendedor, retail_asignado, estado)
@@ -708,7 +713,7 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     const result = await pgPool.query(
       `SELECT universo_total, cubiertos_total, total_activaciones, logro_porcentaje, proyeccion_diaria, logro_a_la_fecha_porcentaje
        FROM mv_surtido_mandatorio_resumen_vendedor
-       WHERE vendedor = 'V9' AND anno_mes = '${ANNO_MES}'`
+       WHERE vendedor = 'V9' AND bimestre = '${ANNO_MES}'`
     );
     // V9 tiene 1 cliente (C9) sin ninguna venta ese mes: clientes_activos = 0, asi que
     // total_activaciones/logro_porcentaje/proyeccion_diaria (todos dividen entre clientes_activos)

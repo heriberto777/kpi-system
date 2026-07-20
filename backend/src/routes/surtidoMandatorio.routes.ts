@@ -15,6 +15,8 @@ const router = Router();
 
 router.use(authMiddleware);
 
+router.get('/bimestres-disponibles', SurtidoMandatorioController.bimestresDisponibles);
+
 router.get(
   '/resumen-vendedor',
   surtidoMandatorioResumenQueryValidators,
