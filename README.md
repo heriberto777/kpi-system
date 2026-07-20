@@ -20,7 +20,7 @@ Node.js + Express + TypeScript (backend/)
   ├─ API REST (JWT): /api/auth, /api/etl, /api/kpi
         │  UPSERT (staging → dimensiones → hechos)
         ▼
-PostgreSQL (Analytics)
+PostgreSQL (Analytics)s
   ├─ staging (stg_*)            se trunca en cada sincronización
   ├─ dimensiones (dim_*)        datos limpios y desnormalizados
   ├─ hechos (fact_ventas)
