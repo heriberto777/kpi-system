@@ -621,6 +621,8 @@ export const PostgresqlService = {
       'mv_surtido_mandatorio_cliente',
       'mv_surtido_mandatorio_cobertura_vendedor',
       'mv_surtido_mandatorio_resumen_vendedor',
+      'mv_surtido_mandatorio_global_por_vendedor',
+      'mv_surtido_mandatorio_global_general',
       'mv_resumen_kpi_general',
     ];
     for (const view of views) {

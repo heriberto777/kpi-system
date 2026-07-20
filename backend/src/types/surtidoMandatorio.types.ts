@@ -46,6 +46,37 @@ export interface SurtidoMandatorioResumenVendedorRow {
   proyeccion_98: number | null;
 }
 
+// Resumenes globales (1 fila por bimestre, sin desglose por vendedor): dos filosofias distintas
+// que conviven en el dashboard, ver comentario de la migracion 017.
+export interface ResumenGlobalPorVendedorRow {
+  id: number;
+  bimestre: string;
+  act_promedio: number | null;
+  logro: number | null;
+  colocaciones: number;
+  restan_70: number | null;
+  restan_45: number | null;
+  bronze_logro_pct: number | null;
+  silver_logro_pct: number | null;
+  gold_logro_pct: number | null;
+}
+
+export interface ResumenGlobalGeneralRow {
+  id: number;
+  bimestre: string;
+  total_activos: number;
+  total_posiciones: number;
+  act_promedio: number | null;
+  objetivo_ponderado: number | null;
+  logro: number | null;
+  restan_80: number | null;
+  restan_70: number | null;
+}
+
+export interface ResumenGlobalFilter {
+  bimestre?: string;
+}
+
 export interface SurtidoMandatorioResumenFilter {
   vendedor?: string;
   bimestre?: string;
@@ -76,6 +107,7 @@ export interface ObjetivoSurtidoMandatorioRow {
   u_cluster: string;
   base_objetivo: number;
   colocaciones_meta: number;
+  meta_conservadora_restan: number;
 }
 
 export interface ConfigSurtidoMandatorioRow {

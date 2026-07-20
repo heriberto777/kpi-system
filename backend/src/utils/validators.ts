@@ -138,6 +138,7 @@ export const updateObjetivoSurtidoMandatorioValidators = [
   param('uCluster').isIn(['BRONZE', 'SILVER', 'GOLD']),
   body('base_objetivo').isInt({ min: 1 }).toInt(),
   body('colocaciones_meta').isInt({ min: 1 }).toInt(),
+  body('meta_conservadora_restan').isInt({ min: 1 }).toInt(),
 ];
 
 export const updateConfigSurtidoMandatorioValidators = [body('cliente_activo_minimo').isInt({ min: 1 }).toInt()];

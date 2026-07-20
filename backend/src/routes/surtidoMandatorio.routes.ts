@@ -18,6 +18,19 @@ router.use(authMiddleware);
 router.get('/bimestres-disponibles', SurtidoMandatorioController.bimestresDisponibles);
 
 router.get(
+  '/resumen-global-por-vendedor',
+  surtidoMandatorioResumenQueryValidators,
+  validationErrorHandler,
+  SurtidoMandatorioController.resumenGlobalPorVendedor
+);
+router.get(
+  '/resumen-global-general',
+  surtidoMandatorioResumenQueryValidators,
+  validationErrorHandler,
+  SurtidoMandatorioController.resumenGlobalGeneral
+);
+
+router.get(
   '/resumen-vendedor',
   surtidoMandatorioResumenQueryValidators,
   validationErrorHandler,

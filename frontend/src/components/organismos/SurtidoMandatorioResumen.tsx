@@ -7,7 +7,21 @@ import KPICard from '../moleculas/KPICard';
 import { kpiApi } from '../../api/kpi.api';
 import { surtidoMandatorioApi } from '../../api/surtidoMandatorio.api';
 import { numero } from '../../utils/number';
-import { SurtidoMandatorioCoberturaData, SurtidoMandatorioResumenVendedorData, VendedorOption } from '../../types';
+import {
+  ResumenGlobalGeneralData,
+  ResumenGlobalPorVendedorData,
+  SurtidoMandatorioCoberturaData,
+  SurtidoMandatorioResumenVendedorData,
+  VendedorOption,
+} from '../../types';
+
+function fmt(valor: number | null | undefined, decimales = 2): string {
+  return valor == null ? '—' : valor.toFixed(decimales);
+}
+
+function fmtPct(valor: number | null | undefined): string {
+  return valor == null ? '—' : `${valor.toFixed(2)}%`;
+}
 
 function promedio(valores: number[]): number | null {
   const validos = valores.filter((v) => v !== null && v !== undefined && !Number.isNaN(v));
@@ -22,6 +36,8 @@ export default function SurtidoMandatorioResumen() {
   const [bimestreSeleccionado, setBimestreSeleccionado] = useState('');
   const [resumen, setResumen] = useState<SurtidoMandatorioResumenVendedorData[]>([]);
   const [cobertura, setCobertura] = useState<SurtidoMandatorioCoberturaData[]>([]);
+  const [globalPorVendedor, setGlobalPorVendedor] = useState<ResumenGlobalPorVendedorData | null>(null);
+  const [globalGeneral, setGlobalGeneral] = useState<ResumenGlobalGeneralData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
@@ -41,11 +57,15 @@ export default function SurtidoMandatorioResumen() {
         vendedor: vendedorSeleccionado || undefined,
         bimestre: bimestreSeleccionado || undefined,
       }),
+      surtidoMandatorioApi.getResumenGlobalPorVendedor(bimestreSeleccionado || undefined),
+      surtidoMandatorioApi.getResumenGlobalGeneral(bimestreSeleccionado || undefined),
     ])
-      .then(([resumenData, coberturaData]) => {
+      .then(([resumenData, coberturaData, globalPorVendedorData, globalGeneralData]) => {
         if (cancelado) return;
         setResumen(resumenData);
         setCobertura(coberturaData);
+        setGlobalPorVendedor(globalPorVendedorData);
+        setGlobalGeneral(globalGeneralData);
       })
       .finally(() => {
         if (!cancelado) setIsLoading(false);
@@ -107,6 +127,90 @@ export default function SurtidoMandatorioResumen() {
         </div>
       ) : (
         <>
+          <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+            <Card className="overflow-hidden p-0">
+              <div className="bg-red-600 px-4 py-2 text-sm font-semibold text-white">Resultado Surtido Mandatorio</div>
+              <div className="p-4">
+                <p className="mb-3 text-xs text-gray-400">
+                  Promedio SIN ponderar entre vendedores: cada uno pesa igual, sin importar cuantos clientes activos
+                  tenga.
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs uppercase text-gray-500">Act. Promedio</div>
+                    <div className="text-lg font-bold text-gray-900">{fmt(globalPorVendedor?.act_promedio)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-gray-500">Logro</div>
+                    <div className="text-lg font-bold text-gray-900">{fmtPct(globalPorVendedor?.logro)}</div>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  <div>
+                    <div className="text-xs uppercase text-gray-500">Colocaciones</div>
+                    <div className="font-semibold text-gray-900">{globalPorVendedor?.colocaciones ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-gray-500">Restan 70%</div>
+                    <div className="font-semibold text-gray-900">{fmt(globalPorVendedor?.restan_70)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-gray-500">Restan 45%</div>
+                    <div className="font-semibold text-gray-900">{fmt(globalPorVendedor?.restan_45)}</div>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  <div className="rounded bg-blue-50 p-2 text-center">
+                    <div className="text-xs font-semibold uppercase text-blue-700">Bronze</div>
+                    <div className="font-bold text-blue-900">{fmtPct(globalPorVendedor?.bronze_logro_pct)}</div>
+                  </div>
+                  <div className="rounded bg-blue-50 p-2 text-center">
+                    <div className="text-xs font-semibold uppercase text-blue-700">Silver</div>
+                    <div className="font-bold text-blue-900">{fmtPct(globalPorVendedor?.silver_logro_pct)}</div>
+                  </div>
+                  <div className="rounded bg-blue-50 p-2 text-center">
+                    <div className="text-xs font-semibold uppercase text-blue-700">Gold</div>
+                    <div className="font-bold text-blue-900">{fmtPct(globalPorVendedor?.gold_logro_pct)}</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+
+            <Card className="overflow-hidden p-0">
+              <div className="bg-blue-700 px-4 py-2 text-sm font-semibold text-white">General</div>
+              <div className="p-4">
+                <p className="mb-3 text-xs text-gray-400">
+                  Ponderado por volumen real: un vendedor con mas clientes activos pesa mas. Denominador = clientes
+                  con ≥1 posicion activa (no clientes activos por Efectividad).
+                </p>
+                <div className="grid grid-cols-2 gap-3">
+                  <div>
+                    <div className="text-xs uppercase text-gray-500">Act. Promedio</div>
+                    <div className="text-lg font-bold text-gray-900">{fmt(globalGeneral?.act_promedio)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-gray-500">Logro</div>
+                    <div className="text-lg font-bold text-gray-900">{fmtPct(globalGeneral?.logro)}</div>
+                  </div>
+                </div>
+                <div className="mt-4 grid grid-cols-3 gap-3">
+                  <div>
+                    <div className="text-xs uppercase text-gray-500">Colocaciones</div>
+                    <div className="font-semibold text-gray-900">{globalGeneral?.total_posiciones ?? '—'}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-gray-500">Restan 80%</div>
+                    <div className="font-semibold text-gray-900">{fmt(globalGeneral?.restan_80)}</div>
+                  </div>
+                  <div>
+                    <div className="text-xs uppercase text-gray-500">Restan 70%</div>
+                    <div className="font-semibold text-gray-900">{fmt(globalGeneral?.restan_70)}</div>
+                  </div>
+                </div>
+              </div>
+            </Card>
+          </div>
+
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-4">
             <KPICard titulo="Logro %" valor={logroPromedio === null ? '—' : `${logroPromedio.toFixed(2)}%`} />
             <KPICard titulo="Logro a la fecha" valor={`${logroFechaAgregado.toFixed(2)}%`} />

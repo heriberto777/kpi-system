@@ -17,7 +17,9 @@ const CLUSTER_OPTIONS = [
 
 export default function ParametrosSurtidoMandatorio() {
   const [objetivos, setObjetivos] = useState<ObjetivoSurtidoMandatorioData[]>([]);
-  const [ediciones, setEdiciones] = useState<Record<string, { base_objetivo: number; colocaciones_meta: number }>>({});
+  const [ediciones, setEdiciones] = useState<
+    Record<string, { base_objetivo: number; colocaciones_meta: number; meta_conservadora_restan: number }>
+  >({});
   const [posiciones, setPosiciones] = useState<PosicionSurtidoMandatorioData[]>([]);
   const [config, setConfig] = useState<ConfigSurtidoMandatorioData | null>(null);
   const [clienteActivoMinimo, setClienteActivoMinimo] = useState<number | ''>('');
@@ -41,7 +43,14 @@ export default function ParametrosSurtidoMandatorio() {
       setObjetivos(objetivosData);
       setEdiciones(
         Object.fromEntries(
-          objetivosData.map((o) => [o.u_cluster, { base_objetivo: o.base_objetivo, colocaciones_meta: o.colocaciones_meta }])
+          objetivosData.map((o) => [
+            o.u_cluster,
+            {
+              base_objetivo: o.base_objetivo,
+              colocaciones_meta: o.colocaciones_meta,
+              meta_conservadora_restan: o.meta_conservadora_restan,
+            },
+          ])
         )
       );
       setPosiciones(posicionesData);
@@ -145,7 +154,9 @@ export default function ParametrosSurtidoMandatorio() {
         <h3 className="mb-1 text-sm font-semibold text-gray-700">Objetivos por cluster</h3>
         <p className="mb-3 text-xs text-gray-400">
           Base = meta de posiciones por cliente (usada en "Logro %"). Colocaciones Meta = meta operativa de un
-          cliente ideal (usada en "Proyección al 98%"). Son números independientes entre sí.
+          cliente ideal (usada en "Proyección al 98%" y en el Logro de la sección "General"). Meta Conservadora =
+          usada SOLO en los "Restan" de la sección "General" (deliberadamente distinta a Colocaciones Meta). Los tres
+          son números independientes entre sí.
         </p>
         <div className="flex flex-col divide-y divide-gray-100">
           {objetivos.map((o) => (
@@ -175,6 +186,20 @@ export default function ParametrosSurtidoMandatorio() {
                     setEdiciones((prev) => ({
                       ...prev,
                       [o.u_cluster]: { ...prev[o.u_cluster], colocaciones_meta: Number(e.target.value) },
+                    }))
+                  }
+                />
+              </div>
+              <div className="w-40">
+                <Input
+                  label="Meta Conservadora"
+                  type="number"
+                  min={0}
+                  value={ediciones[o.u_cluster]?.meta_conservadora_restan ?? ''}
+                  onChange={(e) =>
+                    setEdiciones((prev) => ({
+                      ...prev,
+                      [o.u_cluster]: { ...prev[o.u_cluster], meta_conservadora_restan: Number(e.target.value) },
                     }))
                   }
                 />

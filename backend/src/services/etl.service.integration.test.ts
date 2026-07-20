@@ -739,6 +739,60 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_mandatorio_resumen_vendedor');
   });
 
+  it('calcula mv_surtido_mandatorio_global_por_vendedor: promedio SIN ponderar entre vendedores (cada uno pesa igual)', async () => {
+    const result = await pgPool.query(
+      `SELECT act_promedio, logro, colocaciones, restan_70, restan_45, bronze_logro_pct, silver_logro_pct, gold_logro_pct
+       FROM mv_surtido_mandatorio_global_por_vendedor
+       WHERE bimestre = '${ANNO_MES}'`
+    );
+    // Unico vendedor con clientes en los fixtures es V1 (BRONZE): act_promedio = AVG([3]) = 3;
+    // logro = AVG([25]) = 25; colocaciones = SUM(suma_activaciones) = 3 (unica fila V1-BRONZE).
+    // restan_70 = (objetivo_promedio_prom(12) * universo_operacion(3) * 0.7105) - 3 = 25.578-3 = 22.58
+    // restan_45 = (12*3*0.45) - 3 = 16.2-3 = 13.2
+    // bronze_logro_pct = promedio_activaciones(1)/base_objetivo_BRONZE(12)*100 = 8.33 (unico vendedor con Bronze)
+    // silver/gold_logro_pct = NULL (ningun vendedor tiene clientes en esos clusters)
+    expect(result.rows).toEqual([
+      {
+        act_promedio: 3,
+        logro: 25,
+        colocaciones: 3,
+        restan_70: 22.58,
+        restan_45: 13.2,
+        bronze_logro_pct: 8.33,
+        silver_logro_pct: null,
+        gold_logro_pct: null,
+      },
+    ]);
+  });
+
+  it('calcula mv_surtido_mandatorio_global_general: ponderado por volumen (total/total, no promedio de promedios)', async () => {
+    const result = await pgPool.query(
+      `SELECT total_activos, total_posiciones, act_promedio, objetivo_ponderado, logro, restan_80, restan_70
+       FROM mv_surtido_mandatorio_global_general
+       WHERE bimestre = '${ANNO_MES}'`
+    );
+    // total_activos = SUM(cubiertos) = 2 (unica fila V1-BRONZE); total_posiciones = SUM(suma_activaciones) = 3
+    // (coincide con "colocaciones" de la vista de arriba -- en esta app siempre coinciden, a
+    // diferencia del Excel original con dos pivots que podian desalinearse).
+    // act_promedio = 3/2 = 1.5
+    // objetivo_ponderado = (activos_BRONZE(2) * colocaciones_meta_BRONZE(11)) / 2 = 22/2 = 11
+    //   (usa Colocaciones-por-cluster 11/17/21, NO Base 12/19/23)
+    // logro = 1.5/11*100 = 13.64
+    // restan_80 = (activos_BRONZE(2) * meta_conservadora_restan_BRONZE(10) * 0.80) - 3 = 16-3 = 13
+    // restan_70 = (2*10*0.70) - 3 = 14-3 = 11
+    expect(result.rows).toEqual([
+      {
+        total_activos: 2,
+        total_posiciones: 3,
+        act_promedio: 1.5,
+        objetivo_ponderado: 11,
+        logro: 13.64,
+        restan_80: 13,
+        restan_70: 11,
+      },
+    ]);
+  });
+
   it('dias_laborables_mes/dias_laborables_transcurridos excluyen fines de semana y los feriados curados en dim_dia_no_laborable', async () => {
     const result = await pgPool.query(
       `SELECT dias_laborables_mes('${ANNO_MES}') AS mes, dias_laborables_transcurridos('${ANNO_MES}') AS transcurridos`

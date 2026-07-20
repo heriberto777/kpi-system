@@ -4,6 +4,8 @@ import {
   ConfigSurtidoMandatorioData,
   ObjetivoSurtidoMandatorioData,
   PosicionSurtidoMandatorioData,
+  ResumenGlobalGeneralData,
+  ResumenGlobalPorVendedorData,
   SurtidoMandatorioClienteData,
   SurtidoMandatorioCoberturaData,
   SurtidoMandatorioResumenVendedorData,
@@ -23,6 +25,21 @@ export interface SurtidoMandatorioFiltroFilters {
 export const surtidoMandatorioApi = {
   async getBimestresDisponibles(): Promise<string[]> {
     const { data } = await apiClient.get<string[]>('/surtido-mandatorio/bimestres-disponibles');
+    return data;
+  },
+
+  async getResumenGlobalPorVendedor(bimestre?: string): Promise<ResumenGlobalPorVendedorData | null> {
+    const { data } = await apiClient.get<ResumenGlobalPorVendedorData | null>(
+      '/surtido-mandatorio/resumen-global-por-vendedor',
+      { params: { bimestre } }
+    );
+    return data;
+  },
+
+  async getResumenGlobalGeneral(bimestre?: string): Promise<ResumenGlobalGeneralData | null> {
+    const { data } = await apiClient.get<ResumenGlobalGeneralData | null>('/surtido-mandatorio/resumen-global-general', {
+      params: { bimestre },
+    });
     return data;
   },
 
@@ -72,7 +89,7 @@ export const surtidoMandatorioApi = {
 
   async updateObjetivo(
     uCluster: string,
-    datos: { base_objetivo: number; colocaciones_meta: number }
+    datos: { base_objetivo: number; colocaciones_meta: number; meta_conservadora_restan: number }
   ): Promise<ObjetivoSurtidoMandatorioData> {
     const { data } = await apiClient.put<ObjetivoSurtidoMandatorioData>(`/surtido-mandatorio/objetivos/${uCluster}`, datos);
     return data;

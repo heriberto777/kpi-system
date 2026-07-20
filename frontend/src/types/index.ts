@@ -279,8 +279,37 @@ export interface ObjetivoSurtidoMandatorioData {
   u_cluster: string;
   base_objetivo: number;
   colocaciones_meta: number;
+  meta_conservadora_restan: number;
 }
 
 export interface ConfigSurtidoMandatorioData {
   cliente_activo_minimo: number;
+}
+
+// Resumenes globales (1 fila por bimestre, sin desglose por vendedor): dos filosofias distintas
+// que conviven en el dashboard -- "Por Vendedor" promedia sin ponderar (cada vendedor pesa
+// igual), "General" pondera por volumen real (total/total).
+export interface ResumenGlobalPorVendedorData {
+  id: number;
+  bimestre: string;
+  act_promedio: number | null;
+  logro: number | null;
+  colocaciones: number;
+  restan_70: number | null;
+  restan_45: number | null;
+  bronze_logro_pct: number | null;
+  silver_logro_pct: number | null;
+  gold_logro_pct: number | null;
+}
+
+export interface ResumenGlobalGeneralData {
+  id: number;
+  bimestre: string;
+  total_activos: number;
+  total_posiciones: number;
+  act_promedio: number | null;
+  objetivo_ponderado: number | null;
+  logro: number | null;
+  restan_80: number | null;
+  restan_70: number | null;
 }

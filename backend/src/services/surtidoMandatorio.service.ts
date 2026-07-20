@@ -4,6 +4,9 @@ import {
   ConfigSurtidoMandatorioRow,
   ObjetivoSurtidoMandatorioRow,
   PosicionSurtidoMandatorioRow,
+  ResumenGlobalFilter,
+  ResumenGlobalGeneralRow,
+  ResumenGlobalPorVendedorRow,
   SurtidoMandatorioClienteFilter,
   SurtidoMandatorioClienteRow,
   SurtidoMandatorioCoberturaFilter,
@@ -21,6 +24,27 @@ export const SurtidoMandatorioService = {
       `SELECT DISTINCT bimestre_inicio(anno_mes) AS bimestre FROM dim_objetivos_distribucion ORDER BY bimestre DESC`
     );
     return result.rows.map((r) => r.bimestre);
+  },
+
+  // ============================================
+  // RESUMENES GLOBALES (1 fila por bimestre, ver comentario de la migracion 017)
+  // ============================================
+  async getResumenGlobalPorVendedor(filter: ResumenGlobalFilter): Promise<ResumenGlobalPorVendedorRow | null> {
+    const result = await PostgresqlService.query<ResumenGlobalPorVendedorRow>(
+      `SELECT * FROM mv_surtido_mandatorio_global_por_vendedor
+        WHERE bimestre = COALESCE($1, (SELECT MAX(bimestre) FROM mv_surtido_mandatorio_global_por_vendedor))`,
+      [filter.bimestre ?? null]
+    );
+    return result.rows[0] ?? null;
+  },
+
+  async getResumenGlobalGeneral(filter: ResumenGlobalFilter): Promise<ResumenGlobalGeneralRow | null> {
+    const result = await PostgresqlService.query<ResumenGlobalGeneralRow>(
+      `SELECT * FROM mv_surtido_mandatorio_global_general
+        WHERE bimestre = COALESCE($1, (SELECT MAX(bimestre) FROM mv_surtido_mandatorio_global_general))`,
+      [filter.bimestre ?? null]
+    );
+    return result.rows[0] ?? null;
   },
 
   // ============================================
@@ -145,7 +169,7 @@ export const SurtidoMandatorioService = {
   // ============================================
   async getObjetivos(): Promise<ObjetivoSurtidoMandatorioRow[]> {
     const result = await PostgresqlService.query<ObjetivoSurtidoMandatorioRow>(
-      `SELECT u_cluster, base_objetivo, colocaciones_meta
+      `SELECT u_cluster, base_objetivo, colocaciones_meta, meta_conservadora_restan
          FROM dim_objetivo_surtido_mandatorio
         ORDER BY u_cluster`
     );
@@ -154,14 +178,14 @@ export const SurtidoMandatorioService = {
 
   async updateObjetivo(
     uCluster: string,
-    datos: { base_objetivo: number; colocaciones_meta: number }
+    datos: { base_objetivo: number; colocaciones_meta: number; meta_conservadora_restan: number }
   ): Promise<ObjetivoSurtidoMandatorioRow> {
     const result = await PostgresqlService.query<ObjetivoSurtidoMandatorioRow>(
       `UPDATE dim_objetivo_surtido_mandatorio
-          SET base_objetivo = $2, colocaciones_meta = $3
+          SET base_objetivo = $2, colocaciones_meta = $3, meta_conservadora_restan = $4
         WHERE u_cluster = $1
-        RETURNING u_cluster, base_objetivo, colocaciones_meta`,
-      [uCluster, datos.base_objetivo, datos.colocaciones_meta]
+        RETURNING u_cluster, base_objetivo, colocaciones_meta, meta_conservadora_restan`,
+      [uCluster, datos.base_objetivo, datos.colocaciones_meta, datos.meta_conservadora_restan]
     );
     if (result.rows.length === 0) {
       throw new AppError(`No existe un objetivo de surtido mandatorio para el cluster "${uCluster}"`, 404);

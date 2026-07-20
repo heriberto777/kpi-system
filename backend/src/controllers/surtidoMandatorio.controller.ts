@@ -9,6 +9,18 @@ export const SurtidoMandatorioController = {
     res.json(bimestres);
   }),
 
+  resumenGlobalPorVendedor: asyncHandler(async (req: Request, res: Response) => {
+    const { bimestre } = req.query as { bimestre?: string };
+    const row = await SurtidoMandatorioService.getResumenGlobalPorVendedor({ bimestre });
+    res.json(row);
+  }),
+
+  resumenGlobalGeneral: asyncHandler(async (req: Request, res: Response) => {
+    const { bimestre } = req.query as { bimestre?: string };
+    const row = await SurtidoMandatorioService.getResumenGlobalGeneral({ bimestre });
+    res.json(row);
+  }),
+
   resumenPorVendedor: asyncHandler(async (req: Request, res: Response) => {
     const { vendedor, bimestre } = req.query as { vendedor?: string; bimestre?: string };
     const rows = await SurtidoMandatorioService.getResumenPorVendedor({ vendedor, bimestre });
@@ -55,8 +67,16 @@ export const SurtidoMandatorioController = {
 
   updateObjetivo: asyncHandler(async (req: Request, res: Response) => {
     const { uCluster } = req.params as { uCluster: string };
-    const { base_objetivo, colocaciones_meta } = req.body as { base_objetivo: number; colocaciones_meta: number };
-    const row = await SurtidoMandatorioService.updateObjetivo(uCluster, { base_objetivo, colocaciones_meta });
+    const { base_objetivo, colocaciones_meta, meta_conservadora_restan } = req.body as {
+      base_objetivo: number;
+      colocaciones_meta: number;
+      meta_conservadora_restan: number;
+    };
+    const row = await SurtidoMandatorioService.updateObjetivo(uCluster, {
+      base_objetivo,
+      colocaciones_meta,
+      meta_conservadora_restan,
+    });
     res.json(row);
   }),
 
