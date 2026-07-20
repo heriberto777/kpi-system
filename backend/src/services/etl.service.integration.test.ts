@@ -523,6 +523,40 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     ]);
   });
 
+  it('no pierde ventas reales facturadas bajo un codigo de vendedor sin cuota ni registro en dim_vendedor (bug real: cliente con C.VENDEDOR huerfano en un retail donde ese codigo nunca tuvo cuota)', async () => {
+    // Simula una factura real (denormalizada directo en fact_ventas, como hace el ETL) cuyo
+    // "vendedor" es un codigo que no tiene NINGUNA fila en dim_vendedor ni en dim_cuota_vendedor
+    // para el retail COLMADO -- el bug real: el cliente 18478 (categoria A2/COLMADO) facturado
+    // bajo el vendedor '999', que solo tenia cuota registrada en el retail OTROS.
+    await pgPool.query(
+      `INSERT INTO fact_ventas (id_factura, id_cliente, id_articulo, id_fecha, cantidad, monto, codigo_cliente, codigo_articulo, retail, u_cluster, vendedor, clasificacion_2, u_surtido_n)
+       SELECT 'FHUER1', dc.id_cliente, da.id_articulo, $1, 1, 500, dc.codigo_cliente, da.codigo_articulo, 'COLMADO', dc.u_cluster, 'HUERFANO2', da.clasificacion_2, da.u_surtido_n
+       FROM dim_clientes dc, dim_articulos da
+       WHERE dc.codigo_cliente = 'C1' AND da.codigo_articulo = 'ART-G21'`,
+      [FECHA_FACTURA]
+    );
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_ventas_por_vendedor');
+
+    const result = await pgPool.query(
+      `SELECT vendedor, nombre_vendedor, retail, cuota_monto, venta_neta
+       FROM mv_ventas_por_vendedor
+       WHERE vendedor = 'HUERFANO2'`
+    );
+    expect(result.rows).toEqual([
+      {
+        vendedor: 'HUERFANO2',
+        nombre_vendedor: 'Sin vendedor asignado / Casa',
+        retail: 'COLMADO',
+        cuota_monto: 0,
+        venta_neta: 500,
+      },
+    ]);
+
+    // Limpieza + restaurar la vista al estado que esperan las pruebas siguientes.
+    await pgPool.query(`DELETE FROM fact_ventas WHERE id_factura = 'FHUER1'`);
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_ventas_por_vendedor');
+  });
+
   it('calcula mv_surtido_por_vendedor usando el conteo real de clientes del vendedor por cluster (no dim_vendedor.cantidad_cliente)', async () => {
     const result = await pgPool.query(
       `SELECT vendedor, u_cluster, total_clientes_vendedor, subcategorias_compradas, subcategorias_obligatorias, surtido_porcentaje, anno_mes
