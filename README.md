@@ -8,7 +8,7 @@ Basado en `docs/ESPECIFICACION_TECNICA_ETL_KPI_VENTAS.md` y `docs/PROMPT_HERMES_
 con correcciones y ajustes posteriores verificados contra el ERP real (ver `docs/*_NUEVO.md` y
 `docs/CORRECCIONES_*`, `docs/QUERIES_DEFINITIVAS_*`, `docs/INTEGRACION_TABLA_DBVENDEDOR_*`).
 
-## Arquitectura
+## Arquitecturas
 
 ```
 MSSQL (ERP, solo lectura)
