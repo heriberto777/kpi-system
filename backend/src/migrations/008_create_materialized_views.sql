@@ -364,6 +364,52 @@ combinado AS (
     FROM cuota_resuelta cr
     FULL OUTER JOIN ventas_resuelta vr
         ON cr.anno_mes = vr.anno_mes AND cr.vendedor = vr.vendedor AND cr.retail = vr.retail
+),
+-- Territorio principal de cada vendedor: el retail donde tiene la cuota mas alta asignada ese
+-- mes (asi se preservan intactas las filas de vendedores con VARIAS cuotas reales, p.ej. Wilson
+-- Jimenez con WC1/AUTOSERVICIO y WD1/MAYORISTA -- igual que el reporte de referencia del negocio).
+retail_principal AS (
+    SELECT anno_mes, vendedor, retail
+    FROM (
+        SELECT anno_mes, vendedor, retail,
+               ROW_NUMBER() OVER (PARTITION BY anno_mes, vendedor ORDER BY cuota_monto DESC) AS rn
+        FROM combinado
+        WHERE cuota_monto > 0
+    ) t
+    WHERE rn = 1
+),
+-- Una venta suelta fuera de territorio (cuota_monto = 0 en su propio retail) se reasigna al
+-- territorio principal del vendedor, si tiene uno -- en vez de quedar como su propia fila con
+-- cuota $0 (que se veia como "vendedores repetidos" en el reporte). Las filas CON cuota propia
+-- (incluida la del territorio principal en si) nunca se reasignan, conservan su retail real.
+reasignado AS (
+    SELECT
+        c.anno_mes,
+        c.vendedor,
+        c.nombre_vendedor,
+        c.supervisor,
+        COALESCE(rp.retail, c.retail) AS retail,
+        c.cuota_monto,
+        c.venta_neta,
+        c.venta_bruta,
+        c.facturas
+    FROM combinado c
+    LEFT JOIN retail_principal rp
+        ON rp.anno_mes = c.anno_mes AND rp.vendedor = c.vendedor AND c.cuota_monto = 0
+),
+consolidado AS (
+    SELECT
+        anno_mes,
+        vendedor,
+        MAX(nombre_vendedor) AS nombre_vendedor,
+        MAX(supervisor) AS supervisor,
+        retail,
+        SUM(cuota_monto) AS cuota_monto,
+        SUM(venta_neta) AS venta_neta,
+        SUM(venta_bruta) AS venta_bruta,
+        SUM(facturas) AS facturas
+    FROM reasignado
+    GROUP BY anno_mes, vendedor, retail
 )
 SELECT
     ROW_NUMBER() OVER () AS id,
@@ -396,7 +442,7 @@ SELECT
             / NULLIF(dias_laborables_mes(anno_mes) - dias_laborables_transcurridos(anno_mes), 0), 2
         )
     END AS diario
-FROM combinado
+FROM consolidado
 ORDER BY anno_mes DESC, vendedor;
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_mv_ventas_vendedor_id ON mv_ventas_por_vendedor (id);

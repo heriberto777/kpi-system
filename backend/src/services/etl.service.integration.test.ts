@@ -557,9 +557,9 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     await pgPool.query('REFRESH MATERIALIZED VIEW mv_ventas_por_vendedor');
   });
 
-  it('un vendedor real con una venta fuera de su territorio habitual sigue mostrando su nombre real, no "Sin vendedor asignado / Casa" (bug real: vendedores 8/9/O004/etc. se etiquetaban como huerfanos por tener alguna venta en un retail sin fila propia en dim_vendedor)', async () => {
-    // VENDEDOR (V1) tiene filas en dim_vendedor para COLMADO y MAYORISTA (via RUTA1), pero
-    // NINGUNA para AUTOSERVICIO -- simula una venta suya "fuera de territorio" en ese retail.
+  it('una venta fuera de territorio de un vendedor real se consolida en su territorio principal (mayor cuota), en vez de generar una fila propia con cuota $0 (bug real: la misma persona aparecia "repetida" varias veces en el reporte)', async () => {
+    // VENDEDOR (V1) tiene cuota en COLMADO (1800, la mas alta) y en MAYORISTA (400, via RUTA1),
+    // pero NINGUNA en AUTOSERVICIO -- simula una venta suya "fuera de territorio" en ese retail.
     await pgPool.query(
       `INSERT INTO fact_ventas (id_factura, id_cliente, id_articulo, id_fecha, cantidad, monto, codigo_cliente, codigo_articulo, retail, u_cluster, vendedor, clasificacion_2, u_surtido_n)
        SELECT 'FTERR1', dc.id_cliente, da.id_articulo, $1, 1, 300, dc.codigo_cliente, da.codigo_articulo, 'AUTOSERVICIO', dc.u_cluster, $2, da.clasificacion_2, da.u_surtido_n
@@ -569,20 +569,18 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     );
     await pgPool.query('REFRESH MATERIALIZED VIEW mv_ventas_por_vendedor');
 
-    const result = await pgPool.query(
-      `SELECT vendedor, nombre_vendedor, retail, cuota_monto, venta_neta
-       FROM mv_ventas_por_vendedor
-       WHERE vendedor = '${VENDEDOR}' AND retail = 'AUTOSERVICIO'`
+    const autoservicio = await pgPool.query(
+      `SELECT 1 FROM mv_ventas_por_vendedor WHERE vendedor = '${VENDEDOR}' AND retail = 'AUTOSERVICIO'`
     );
-    expect(result.rows).toEqual([
-      {
-        vendedor: VENDEDOR,
-        nombre_vendedor: 'Vendedor Uno',
-        retail: 'AUTOSERVICIO',
-        cuota_monto: 0,
-        venta_neta: 300,
-      },
-    ]);
+    expect(autoservicio.rows).toHaveLength(0);
+
+    // COLMADO es su territorio de mayor cuota (1800 > 400 de MAYORISTA): absorbe la venta suelta.
+    // venta_neta base de COLMADO es 950 (ver el test de mv_ventas_por_vendedor mas arriba); con
+    // los 300 sueltos de AUTOSERVICIO consolidados, debe quedar en 1250.
+    const colmado = await pgPool.query(
+      `SELECT venta_neta FROM mv_ventas_por_vendedor WHERE vendedor = '${VENDEDOR}' AND retail = 'COLMADO'`
+    );
+    expect(colmado.rows).toEqual([{ venta_neta: 1250 }]);
 
     await pgPool.query(`DELETE FROM fact_ventas WHERE id_factura = 'FTERR1'`);
     await pgPool.query('REFRESH MATERIALIZED VIEW mv_ventas_por_vendedor');
