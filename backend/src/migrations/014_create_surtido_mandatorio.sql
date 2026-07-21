@@ -5,10 +5,15 @@
 -- agrega ningun sync nuevo contra el ERP ni tabla de hechos propia. No toca dim_surtido_obligatorio
 -- ni mv_surtido_por_cliente/vendedor/cluster (modulo de Surtido existente, sin relacion).
 --
--- Objetivos por cluster confirmados con el negocio (dos numeros INDEPENDIENTES, no derivados de
--- contar filas de dim_surtido_mandatorio_posicion):
---   base_objetivo       = meta de posiciones por cliente, usada en "Logro"        (12/19/23)
---   colocaciones_meta   = meta operativa de posiciones activas de un cliente ideal (11/17/21)
+-- Objetivos por cluster confirmados con el negocio (numeros INDEPENDIENTES entre si, no derivados
+-- de contar filas de dim_surtido_mandatorio_posicion):
+--   base_objetivo             = meta de posiciones por cliente, usada en "Logro"          (12/19/23)
+--   colocaciones_meta         = meta operativa de posiciones activas de cliente ideal     (11/17/21)
+--   meta_conservadora_restan = "meta conservadora", usada SOLO en los "Restan" de la      (10/14/17)
+--                              seccion General del resumen global (migracion 017) -- se siembra
+--                              aqui junto con los otros dos para que el INSERT de esta migracion
+--                              sea valido de una sola vez, tanto en una base nueva como en una ya
+--                              migrada donde esta columna ya es NOT NULL (ver migracion 017).
 -- ============================================
 
 CREATE TABLE IF NOT EXISTS dim_surtido_mandatorio_posicion (
@@ -26,12 +31,13 @@ CREATE TABLE IF NOT EXISTS dim_surtido_mandatorio_posicion (
 CREATE TABLE IF NOT EXISTS dim_objetivo_surtido_mandatorio (
     u_cluster VARCHAR(20) PRIMARY KEY,
     base_objetivo INT NOT NULL,
-    colocaciones_meta INT NOT NULL
+    colocaciones_meta INT NOT NULL,
+    meta_conservadora_restan INT NOT NULL
 );
-INSERT INTO dim_objetivo_surtido_mandatorio (u_cluster, base_objetivo, colocaciones_meta) VALUES
-    ('BRONZE', 12, 11),
-    ('SILVER', 19, 17),
-    ('GOLD', 23, 21)
+INSERT INTO dim_objetivo_surtido_mandatorio (u_cluster, base_objetivo, colocaciones_meta, meta_conservadora_restan) VALUES
+    ('BRONZE', 12, 11, 10),
+    ('SILVER', 19, 17, 14),
+    ('GOLD', 23, 21, 17)
 ON CONFLICT (u_cluster) DO NOTHING;
 
 -- Fila unica, editable desde Parametros. "Cliente activo" es independiente del surtido: cuenta
