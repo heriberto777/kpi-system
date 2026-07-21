@@ -626,6 +626,63 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     ]);
   });
 
+  it('Surtido (existente y Mandatorio) solo mide retail COLMADO: un cliente MAYORISTA del mismo vendedor/cluster no cuenta en universo ni en compras', async () => {
+    // C8: mismo vendedor y cluster que C1/C2/C3, pero categoria_cliente D1 -> retail MAYORISTA.
+    // Compra G21 (obligatoria en BRONZE) -- si el filtro de retail no funcionara, sumaria tanto al
+    // universo (total_clientes_vendedor/total_clientes) como a subcategorias_compradas.
+    await pgPool.query(
+      `INSERT INTO dim_clientes (codigo_cliente, nombre_cliente, categoria_cliente, retail, u_cluster, vendedor_asignado, estado, fecha_creacion)
+       VALUES ('C8', 'Cliente Ocho Mayorista', 'D1', 'MAYORISTA', 'BRONZE', '${VENDEDOR}', 'Activo', '2025-01-01')`
+    );
+    await pgPool.query(
+      `INSERT INTO fact_ventas (id_factura, id_cliente, id_articulo, id_fecha, cantidad, monto, codigo_cliente, codigo_articulo, retail, u_cluster, vendedor, clasificacion_2, u_surtido_n)
+       SELECT 'FC8G21', dc.id_cliente, da.id_articulo, $1, 5, 500, dc.codigo_cliente, da.codigo_articulo, 'MAYORISTA', dc.u_cluster, $2, da.clasificacion_2, da.u_surtido_n
+       FROM dim_clientes dc, dim_articulos da
+       WHERE dc.codigo_cliente = 'C8' AND da.codigo_articulo = 'ART-G21'`,
+      [FECHA_FACTURA, VENDEDOR]
+    );
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_por_cliente');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_por_vendedor');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_por_cluster');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_mandatorio_cliente');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_mandatorio_cobertura_vendedor');
+
+    const enSurtidoCliente = await pgPool.query(`SELECT 1 FROM mv_surtido_por_cliente WHERE codigo_cliente = 'C8'`);
+    expect(enSurtidoCliente.rows).toEqual([]);
+
+    const porVendedor = await pgPool.query(
+      `SELECT total_clientes_vendedor, subcategorias_compradas FROM mv_surtido_por_vendedor
+       WHERE vendedor = '${VENDEDOR}' AND u_cluster = 'BRONZE' AND anno_mes = '${ANNO_MES}'`
+    );
+    // Mismos valores que el test de mv_surtido_por_vendedor de arriba (3 clientes COLMADO, 2
+    // subcategorias) -- C8 (MAYORISTA) no debe sumar ni al universo ni a las compras.
+    expect(porVendedor.rows).toEqual([{ total_clientes_vendedor: 3, subcategorias_compradas: 2 }]);
+
+    const porCluster = await pgPool.query(
+      `SELECT total_clientes, subcategorias_compradas FROM mv_surtido_por_cluster
+       WHERE u_cluster = 'BRONZE' AND anno_mes = '${ANNO_MES}'`
+    );
+    expect(porCluster.rows).toEqual([{ total_clientes: 3, subcategorias_compradas: 2 }]);
+
+    const enMandatorioCliente = await pgPool.query(`SELECT 1 FROM mv_surtido_mandatorio_cliente WHERE codigo_cliente = 'C8'`);
+    expect(enMandatorioCliente.rows).toEqual([]);
+
+    const coberturaVendedor = await pgPool.query(
+      `SELECT universo FROM mv_surtido_mandatorio_cobertura_vendedor
+       WHERE vendedor = '${VENDEDOR}' AND u_cluster = 'BRONZE' AND bimestre = '${ANNO_MES}'`
+    );
+    expect(coberturaVendedor.rows).toEqual([{ universo: 3 }]);
+
+    // Limpieza + restaurar el estado que esperan las pruebas siguientes (snapshots exactos de C1/C2/C3).
+    await pgPool.query(`DELETE FROM fact_ventas WHERE id_factura = 'FC8G21'`);
+    await pgPool.query(`DELETE FROM dim_clientes WHERE codigo_cliente = 'C8'`);
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_por_cliente');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_por_vendedor');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_por_cluster');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_mandatorio_cliente');
+    await pgPool.query('REFRESH MATERIALIZED VIEW mv_surtido_mandatorio_cobertura_vendedor');
+  });
+
   it('calcula mv_surtido_mandatorio_cliente: solo cuenta posiciones marcadas obligatorias (G21/G22), no G32 aunque se haya comprado', async () => {
     const result = await pgPool.query(
       `SELECT codigo_cliente, u_cluster, vendedor, posiciones_activas, posiciones_obligatorias, cliente_activo

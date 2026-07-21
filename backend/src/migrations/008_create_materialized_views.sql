@@ -458,6 +458,9 @@ CREATE INDEX IF NOT EXISTS idx_mv_ventas_vendedor_mes ON mv_ventas_por_vendedor 
 -- app). Sin el filtro de obligatorios, comprar un grupo no-obligatorio (o el grupo "0" = sin
 -- U_SURTIDO_N) inflaria el surtido por encima de 100%. Se calcula para todos los meses
 -- disponibles, filtrable por mes igual que las vistas de Distribucion.
+-- Surtido solo aplica a retail COLMADO (categoria_cliente A1/A2/A3) -- confirmado con el negocio,
+-- AUTOSERVICIO/MAYORISTA/OTROS quedan fuera del universo de este modulo (a diferencia de
+-- Distribucion, que si los incluye desglosados por retail).
 -- --------------------------------------------
 DROP MATERIALIZED VIEW IF EXISTS mv_surtido_por_cliente CASCADE;
 CREATE MATERIALIZED VIEW mv_surtido_por_cliente AS
@@ -474,6 +477,7 @@ subcategorias_obligatorias_cliente AS (
         dc.vendedor_asignado
     FROM dim_clientes dc
     WHERE dc.estado = 'Activo'
+      AND dc.retail = 'COLMADO'
 ),
 compras_netas_grupo AS (
     SELECT
@@ -540,6 +544,9 @@ CREATE INDEX IF NOT EXISTS idx_mv_surtido_cliente_mes ON mv_surtido_por_cliente 
 -- vendedor (una por retail_asignado). "subcategorias_compradas" usa cantidad neta positiva
 -- en el MES CALENDARIO (mismo patron que mv_surtido_por_cliente; ver esa vista para el porque
 -- del cambio de ventana rodante de 30 dias a mes calendario).
+-- Surtido solo aplica a retail COLMADO -- filtrado tanto en el denominador (clientes_x_vendedor_
+-- cluster) como en compras_netas_grupo (fv.retail), para que ventas de un cliente de otro retail
+-- del mismo vendedor no infle el numerador.
 -- --------------------------------------------
 DROP MATERIALIZED VIEW IF EXISTS mv_surtido_por_vendedor CASCADE;
 CREATE MATERIALIZED VIEW mv_surtido_por_vendedor AS
@@ -566,6 +573,7 @@ clientes_x_vendedor_cluster AS (
     FROM vendedores_activos va
     JOIN dim_clientes dc ON va.codigo_vendedor = dc.vendedor_asignado
     WHERE dc.estado = 'Activo'
+      AND dc.retail = 'COLMADO'
     GROUP BY va.codigo_vendedor, dc.u_cluster
 ),
 compras_netas_grupo AS (
@@ -582,6 +590,7 @@ compras_netas_grupo AS (
              (TO_DATE(mo.anno_mes || '-01', 'YYYY-MM-DD') + INTERVAL '1 month - 1 day')::date,
              fecha_referencia_ventas()
            )
+       AND fv.retail = 'COLMADO'
     JOIN dim_surtido_obligatorio dso
         ON dso.u_cluster = fv.u_cluster
         AND dso.u_surtido_n = fv.u_surtido_n
@@ -620,6 +629,7 @@ CREATE INDEX IF NOT EXISTS idx_mv_surtido_vendedor_mes ON mv_surtido_por_vendedo
 -- MV_SURTIDO_POR_CLUSTER
 -- "subcategorias_compradas" usa cantidad neta positiva en el MES CALENDARIO (ver nota en
 -- mv_surtido_por_cliente sobre el cambio de ventana rodante de 30 dias a mes calendario).
+-- Surtido solo aplica a retail COLMADO (ver mv_surtido_por_cliente).
 -- --------------------------------------------
 DROP MATERIALIZED VIEW IF EXISTS mv_surtido_por_cluster CASCADE;
 CREATE MATERIALIZED VIEW mv_surtido_por_cluster AS
@@ -636,6 +646,7 @@ clientes_por_cluster AS (
     SELECT u_cluster, COUNT(DISTINCT id_cliente) AS total_clientes
     FROM dim_clientes
     WHERE estado = 'Activo'
+      AND retail = 'COLMADO'
     GROUP BY u_cluster
 ),
 compras_netas_grupo AS (
@@ -651,6 +662,7 @@ compras_netas_grupo AS (
              (TO_DATE(mo.anno_mes || '-01', 'YYYY-MM-DD') + INTERVAL '1 month - 1 day')::date,
              fecha_referencia_ventas()
            )
+       AND fv.retail = 'COLMADO'
     JOIN dim_surtido_obligatorio dso
         ON dso.u_cluster = fv.u_cluster
         AND dso.u_surtido_n = fv.u_surtido_n

@@ -101,6 +101,11 @@ $$ LANGUAGE sql STABLE;
 -- preguntas independientes).
 -- "posiciones_obligatorias" sale de dim_objetivo_surtido_mandatorio.base_objetivo (constante de
 -- negocio, ya es meta POR BIMESTRE), NO de contar filas de dim_surtido_mandatorio_posicion.
+-- Igual que el Surtido existente, Surtido Mandatorio solo aplica a retail COLMADO (categoria_
+-- cliente A1/A2/A3) -- confirmado con el negocio. Las CTEs de abajo (posiciones_netas,
+-- total_neto_cliente) agregan fact_ventas por id_cliente sin filtrar retail explicitamente, pero
+-- no hace falta: id_cliente ya viene acotado a COLMADO desde clientes_base, y el retail de un
+-- cliente no cambia entre sus propias facturas.
 -- --------------------------------------------
 DROP MATERIALIZED VIEW IF EXISTS mv_surtido_mandatorio_cliente CASCADE;
 CREATE MATERIALIZED VIEW mv_surtido_mandatorio_cliente AS
@@ -111,6 +116,7 @@ clientes_base AS (
     SELECT dc.id_cliente, dc.codigo_cliente, dc.u_cluster, dc.vendedor_asignado
     FROM dim_clientes dc
     WHERE dc.estado = 'Activo'
+      AND dc.retail = 'COLMADO'
 ),
 posiciones_netas AS (
     SELECT
