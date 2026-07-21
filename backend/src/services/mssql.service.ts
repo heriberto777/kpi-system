@@ -29,6 +29,9 @@ const QUERY_CLIENTES = `
       CASE WHEN C.U_SEMANA IS NULL THEN C.VENDEDOR ELSE C.U_SEMANA END AS cat_cliente_esp
   FROM CATELLI.CLIENTE C
   WHERE C.ACTIVO = 'S'
+    -- Codigos que empiezan con 'N' no son clientes reales (confirmado por el negocio) -- sin
+    -- este filtro se cargaban como si fueran cartera real, inflando universo/cobertura.
+    AND C.CLIENTE NOT LIKE 'N%'
   ORDER BY C.CLIENTE;
 `;
 

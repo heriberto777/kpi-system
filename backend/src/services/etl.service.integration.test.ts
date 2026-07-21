@@ -849,4 +849,22 @@ describe('ETL pipeline (integracion contra PostgreSQL real)', () => {
     // Restaura el estado para no afectar el orden de otros tests si Jest los reordenara.
     await ConfigService.setSubcategoriaActiva('G21', true);
   });
+
+  it('upsertDimClientes marca como Inactivo (no borra) un cliente ausente en una sincronizacion posterior, en vez de reventar la FK de fact_ventas si ya tiene ventas historicas', async () => {
+    // Simula una segunda corrida del ETL donde el ERP ya no devuelve C3 (bug real: codigos 'N%'
+    // que quedaron sincronizados con la query vieja, antes de agregar el filtro que los excluye).
+    // C3 ya tiene ventas en fact_ventas (fixture F2/F3) -- un DELETE directo aqui rompería esa FK.
+    MssqlService.extraerClientes.mockResolvedValueOnce(CLIENTES.filter((c) => c.codigo_cliente !== 'C3'));
+    await ETLService.syncClientes(true);
+
+    const inactivo = await pgPool.query(`SELECT estado FROM dim_clientes WHERE codigo_cliente = 'C3'`);
+    expect(inactivo.rows).toEqual([{ estado: 'Inactivo' }]);
+
+    // La siguiente sincronizacion (el mock "once" ya se consumio, vuelve al CLIENTES completo de
+    // beforeAll) debe reactivarlo via la rama normal INSERT...ON CONFLICT -- restaura el estado
+    // para el resto de la suite.
+    await ETLService.syncClientes(true);
+    const restaurado = await pgPool.query(`SELECT estado FROM dim_clientes WHERE codigo_cliente = 'C3'`);
+    expect(restaurado.rows).toEqual([{ estado: 'Activo' }]);
+  });
 });

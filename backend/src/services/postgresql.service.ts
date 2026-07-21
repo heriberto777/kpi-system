@@ -286,6 +286,20 @@ export const PostgresqlService = {
   // UPSERT: staging -> dimensiones / hechos
   // ============================================
   async upsertDimClientes(): Promise<SyncResult> {
+    // Un cliente que ya no aparece en la carga fresca de stg_clientes (p.ej. codigos 'N%' que
+    // QUERY_CLIENTES ahora excluye, pero que un sync anterior ya habia insertado) NO se borra --
+    // fact_ventas.id_cliente tiene FK hacia dim_clientes.id_cliente sin ON DELETE, asi que un
+    // DELETE directo revienta la transaccion si ese cliente ya tiene ventas historicas. En vez
+    // de eso se marca 'Inactivo', que es el mismo filtro (`estado = 'Activo'`) que ya usan todas
+    // las vistas de Distribucion/Surtido/Surtido Mandatorio para excluir clientes -- logra el
+    // mismo efecto practico, sin el riesgo de la FK y de forma reversible.
+    await query(`
+      UPDATE dim_clientes dc
+         SET estado = 'Inactivo', fecha_actualizacion = CURRENT_TIMESTAMP
+       WHERE dc.estado = 'Activo'
+         AND NOT EXISTS (SELECT 1 FROM stg_clientes stc WHERE stc.codigo_cliente = dc.codigo_cliente)
+    `);
+
     const sql = `
       INSERT INTO dim_clientes (codigo_cliente, nombre_cliente, categoria_cliente, retail, u_cluster, vendedor_asignado, cat_cliente_esp, estado, fecha_creacion)
       SELECT
